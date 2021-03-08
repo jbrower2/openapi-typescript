@@ -1,7 +1,7 @@
 {
-	"name": "openapi-typescript",
+	"name": "@jbrower/openapi-typescript",
 	"version": "1.0.0",
-	"description": "",
+	"description": "Tool for generating TypeScript APIs/clients from OpenAPI spec files.",
 	"main": "dist/index.js",
 	"scripts": {
 		"build": "tsc",
@@ -10,8 +10,8 @@
 		"test": "echo \"Error: no test specified\" && exit 1"
 	},
 	"keywords": [],
-	"author": "",
-	"license": "ISC",
+	"author": "Jeff Brower",
+	"license": "MIT",
 	"dependencies": {
 		"email-validator": "^2.0.4",
 		"rimraf": "^3.0.2",
