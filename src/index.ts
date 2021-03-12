@@ -1039,14 +1039,20 @@ switch (mode) {
 			writeFile([
 				'import { Express } from "express";',
 				...tagIdentifiers.map(
-					(tag) => `import ${tag.lowerCamel}Api from "@app/api/${tag.kebab}";`
+					(tag) => `import ${tag.upperCamel}Api from "./api/${tag.kebab}";`
 				),
 				"",
-				"export default (app: Express): void => {",
+				"export type Apis = {",
 				...tagIdentifiers.map(
-					(tag) => `\t${tag.lowerCamel}Api.registerEndpoints(app);`
+					(tag) => `\t${tag.lowerCamel}: ${tag.upperCamel}Api;`
 				),
-				"}",
+				"};",
+				"",
+				"export default (apis: Apis, app: Express): void => {",
+				...tagIdentifiers.map(
+					(tag) => `\tapis.${tag.lowerCamel}.registerEndpoints(app);`
+				),
+				"};",
 			])
 		);
 		break;
