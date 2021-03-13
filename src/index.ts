@@ -325,6 +325,7 @@ const writeObjectModel = (objectName: string, objectSchema: OpenAPISchema) => {
 							throw `Unexpected item type: ${itemSchema.type} (${objectName}.${property}.items)`;
 					}
 
+					// TODO use validateOpt method (this will not work)
 					const validateMethod = required
 						? "validateArray"
 						: "validateArrayOpt";
@@ -335,11 +336,13 @@ const writeObjectModel = (objectName: string, objectSchema: OpenAPISchema) => {
 				}
 
 				case "boolean": {
-					const validateMethod = required
-						? "validateBoolean"
-						: "validateBooleanOpt";
-					imports.addValidate(validateMethod);
-					validateLine = `${validateMethod}(json.${property}, [...context, "${property}"])`;
+					imports.addValidate("validateBoolean");
+					if (required) {
+						validateLine = `validateBoolean(json.${property}, [...context, "${property}"])`;
+					} else {
+						imports.addValidate("validateOpt");
+						validateLine = `validateOpt(json.${property}, validateBoolean, [...context, "${property}"])`;
+					}
 
 					break;
 				}
@@ -347,16 +350,32 @@ const writeObjectModel = (objectName: string, objectSchema: OpenAPISchema) => {
 				case "integer": {
 					propertyLine = "number";
 
-					const validateMethod = required
-						? "validateInteger"
-						: "validateIntegerOpt";
-					imports.addValidate(validateMethod);
-					validateLine = `${validateMethod}(json.${property}, [...context, "${property}"])`;
+					imports.addValidate("validateInteger");
+					if (required) {
+						validateLine = `validateInteger(json.${property}, [...context, "${property}"])`;
+					} else {
+						imports.addValidate("validateOpt");
+						validateLine = `validateOpt(json.${property}, validateInteger, [...context, "${property}"])`;
+					}
+
+					break;
+				}
+
+				case "number": {
+					imports.addValidate("validateNumber");
+					if (required) {
+						validateLine = `validateNumber(json.${property}, [...context, "${property}"])`;
+					} else {
+						imports.addValidate("validateOpt");
+						validateLine = `validateOpt(json.${property}, validateNumber, [...context, "${property}"])`;
+					}
 
 					break;
 				}
 
 				case "string": {
+					imports.addValidate("validateString");
+
 					const format = propertySchema.format;
 					const minLength = propertySchema.minLength;
 					const maxLength = propertySchema.maxLength;
@@ -366,13 +385,13 @@ const writeObjectModel = (objectName: string, objectSchema: OpenAPISchema) => {
 						minLength === undefined &&
 						maxLength === undefined
 					) {
-						const validateMethod = required
-							? "validateString"
-							: "validateStringOpt";
-						imports.addValidate(validateMethod);
-						validateLine = `${validateMethod}(json.${property}, [...context, "${property}"])`;
+						if (required) {
+							validateLine = `validateString(json.${property}, [...context, "${property}"])`;
+						} else {
+							imports.addValidate("validateOpt");
+							validateLine = `validateOpt(json.${property}, validateString, [...context, "${property}"])`;
+						}
 					} else {
-						imports.addValidate("validateString");
 						validateLine = `validateString(json.${property}, [...context, "${property}"])`;
 						switch (format) {
 							case undefined:
@@ -467,6 +486,7 @@ const getTypeFromSchema = (
 	required: boolean,
 	context: string[]
 ): RuntimeType => {
+	const contextString = context.map((x) => `"${x}"`).join(", ");
 	if (isReference(schema)) {
 		const ident = getComponentFromRef(schema.$ref);
 		imports.addLocal("model", ident.kebab, ident.upperCamel);
@@ -475,14 +495,9 @@ const getTypeFromSchema = (
 			validate: (name) => {
 				const validateMethod = `validate${ident.upperCamel}`;
 				imports.addLocal("model", ident.kebab, validateMethod);
-				if (required)
-					return `${validateMethod}(${name}, [${context
-						.map((x) => `"${x}"`)
-						.join(", ")}])`;
+				if (required) return `${validateMethod}(${name}, [${contextString}])`;
 				imports.addValidate("isUndefined");
-				return `isUndefined(${name}) ? undefined : ${validateMethod}(${name}, [${context
-					.map((x) => `"${x}"`)
-					.join(", ")}])`;
+				return `isUndefined(${name}) ? undefined : ${validateMethod}(${name}, [${contextString}])`;
 			},
 		};
 	}
@@ -501,48 +516,35 @@ const getTypeFromSchema = (
 				typeName: required ? `${typeName}[]` : `${typeName}[] | undefined`,
 				validate: (name) => {
 					const inner = validate("x");
+					// TODO use validateOpt method (this will not work)
 					let validateMethod = "validateArray";
 					if (!required) validateMethod += "Opt";
 					imports.addValidate(validateMethod);
-					return `${validateMethod}(\n\t${name},\n\t(x) => ${inner},\n\t[${context
-						.map((x) => `"${x}"`)
-						.join(", ")}],\n)`;
+					return `${validateMethod}(\n\t${name},\n\t(x) => ${inner},\n\t[${contextString}],\n)`;
 				},
 			};
 		}
 
 		case "boolean":
+		case "integer":
 		case "number":
 		case "string":
+			const typeName = type === "integer" ? "number" : type;
 			return {
-				typeName: required ? type : `${type} | undefined`,
+				typeName: required ? typeName : `${typeName} | undefined`,
 				validate: (name) => {
-					let validateMethod = "validate";
-					validateMethod += type[0].toUpperCase();
-					validateMethod += type.substring(1);
-					if (!required) validateMethod += "Opt";
+					const validateMethod = `validate${capitalize(type)}`;
 					imports.addValidate(validateMethod);
-					return `${validateMethod}(${name}, [${context
-						.map((x) => `"${x}"`)
-						.join(", ")}])`;
-				},
-			};
-
-		case "integer":
-			return {
-				typeName: required ? "number" : "number | undefined",
-				validate: (name) => {
-					let validateMethod = "validateInteger";
-					if (!required) validateMethod += "Opt";
-					imports.addValidate(validateMethod);
-					return `${validateMethod}(${name}, [${context
-						.map((x) => `"${x}"`)
-						.join(", ")}])`;
+					if (required) {
+						return `${validateMethod}(${name}, [${contextString}])`;
+					}
+					imports.addValidate("validateOpt");
+					return `validateOpt(${name}, ${validateMethod}, [${contextString}])`;
 				},
 			};
 
 		default:
-			throw `Unexpected type '${type}' of '${context}'`;
+			throw `Unexpected type '${type}' of '${context.join(".")}'`;
 	}
 };
 
