@@ -353,6 +353,26 @@ export const isUndefined = (thing: unknown): boolean =>
 	thing === undefined || thing === null;
 
 /**
+ * Validates that something is \`undefined\`, \`null\`, or passes a specific validation.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param validate
+ *   The validator to use when \`thing\` is not \`undefined\` or \`null\`.
+ * @param context
+ *   The context to report in error messages.
+ * @returns
+ *   * \`undefined\` if \`thing\` was \`undefined\` or \`null\`.
+ *   * the result of \`validate\` otherwise.
+ */
+export const validateOpt = <T>(
+	thing: unknown,
+	validate: (thing: unknown, context: string[]) => T,
+	context: string[],
+): T | undefined =>
+	isUndefined(thing) ? undefined : validate(thing, context);
+
+/**
  * Validates that something is an object.
  *
  * @param thing
@@ -410,28 +430,6 @@ export const validateType = <T>(
 };
 
 /**
- * Validates that something is a specific type, \`undefined\`, or \`null\`.
- *
- * @param typeRef
- *   The type to test against.
- * @param thing
- *   The thing to test.
- * @param context
- *   The context to report in error messages.
- * @return
- *   * \`thing\` if the it was the specified type.
- *   * \`undefined\` if \`thing\` was \`undefined\` or \`null\`.
- * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not the specified type, \`undefined\`, or \`null\`.
- */
-export const validateTypeOpt = <T>(
-	typeRef: Type<T>,
-	thing: unknown,
-	context: string[]
-): T | undefined =>
-	isUndefined(thing) ? undefined : validateType(typeRef, thing, context);
-
-/**
  * Validates that something is a boolean.
  *
  * @param thing
@@ -454,25 +452,6 @@ export const validateBoolean = (
 		\`Expected '\${context.join(".")}' to be a boolean, but found: \${thing} (\${typeof thing})\`
 	);
 };
-
-/**
- * Validates that something is a boolean, \`undefined\`, or \`null\`.
- *
- * @param thing
- *   The thing to test.
- * @param context
- *   The context to report in error messages.
- * @return
- *   * \`thing\` if it was a boolean.
- *   * \`undefined\` if \`thing\` was \`undefined\` or \`null\`.
- * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not a boolean, \`undefined\`, or \`null\`.
- */
-export const validateBooleanOpt = (
-	thing: unknown,
-	context: string[]
-): boolean | undefined =>
-	isUndefined(thing) ? undefined : validateBoolean(thing, context);
 
 /**
  * Validates that something is \`"Y"\` or \`"N"\`.
@@ -503,26 +482,6 @@ export const validateBooleanYN = (
 };
 
 /**
- * Validates that something is \`"Y"\`, \`"N"\`, \`undefined\`, or \`null\`.
- *
- * @param thing
- *   The thing to test.
- * @param context
- *   The context to report in error messages.
- * @return
- *   * \`true\` if \`thing\` was \`"Y"\`.
- *   * \`false\` if \`thing\` was \`"N"\`.
- *   * \`undefined\` if \`thing\` was \`undefined\` or \`null\`.
- * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not \`"Y"\`, \`"N"\`, \`undefined\`, or \`null\`.
- */
-export const validateBooleanYNOpt = (
-	thing: unknown,
-	context: string[]
-): boolean =>
-	isUndefined(thing) ? undefined : validateBooleanYN(thing, context);
-
-/**
  * Validates that something is a number.
  *
  * @param thing
@@ -548,25 +507,6 @@ export const validateNumber = (thing: unknown, context: string[]): number => {
 };
 
 /**
- * Validates that something is a number, \`undefined\`, or \`null\`.
- *
- * @param thing
- *   The thing to test.
- * @param context
- *   The context to report in error messages.
- * @return
- *   * \`thing\` if it was a number.
- *   * \`undefined\` if \`thing\` was \`undefined\` or \`null\`.
- * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not a number, \`undefined\`, or \`null\`.
- */
-export const validateNumberOpt = (
-	thing: unknown,
-	context: string[]
-): number | undefined =>
-	isUndefined(thing) ? undefined : validateNumber(thing, context);
-
-/**
  * Validates that something is an integer.
  *
  * @param thing
@@ -589,25 +529,6 @@ export const validateInteger = (thing: unknown, context: string[]): number => {
 };
 
 /**
- * Validates that something is an integer, \`undefined\`, or \`null\`.
- *
- * @param thing
- *   The thing to test.
- * @param context
- *   The context to report in error messages.
- * @return
- *   * \`thing\` if it was an integer.
- *   * \`undefined\` if \`thing\` was \`undefined\` or \`null\`.
- * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not an integer, \`undefined\`, or \`null\`.
- */
-export const validateIntegerOpt = (
-	thing: unknown,
-	context: string[]
-): number | undefined =>
-	isUndefined(thing) ? undefined : validateInteger(thing, context);
-
-/**
  * Validates that something is a string.
  *
  * @param thing
@@ -627,25 +548,6 @@ export const validateString = (thing: unknown, context: string[]): string => {
 		\`Expected '\${context.join(".")}' to be a string, but found: \${thing} (\${typeof thing})\`
 	);
 };
-
-/**
- * Validates that something is a string, \`undefined\`, or \`null\`.
- *
- * @param thing
- *   The thing to test.
- * @param context
- *   The context to report in error messages.
- * @return
- *   * \`thing\` if it was a string.
- *   * \`undefined\` if \`thing\` was \`undefined\` or \`null\`.
- * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not a string, \`undefined\`, or \`null\`.
- */
-export const validateStringOpt = (
-	thing: unknown,
-	context: string[]
-): string | undefined =>
-	isUndefined(thing) ? undefined : validateString(thing, context);
 
 /**
  * Validates that a string's length is within a specific range.
@@ -737,28 +639,6 @@ export const validateArray = <T>(
 		\`Expected '\${context.join(".")}' to be an array, but found: \${thing} (\${typeof thing})\`
 	);
 };
-
-/**
- * Validates that something is an array, \`undefined\`, or \`null\`.
- *
- * @param thing
- *   The thing to test.
- * @param mapper
- *   The function to apply to each array item.
- * @param context
- *   The context to report in error messages.
- * @return
- *   * \`thing\` if it was an array.
- *   * \`undefined\` if \`thing\` was \`undefined\` or \`null\`.
- * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not an array, \`undefined\`, or \`null\`.
- */
-export const validateArrayOpt = <T>(
-	thing: unknown,
-	mapper: (x: unknown) => T,
-	context: string[]
-): T[] | undefined =>
-	isUndefined(thing) ? undefined : validateArray(thing, mapper, context);
 
 /**
  * Tests whether something is one of a known list of values.
