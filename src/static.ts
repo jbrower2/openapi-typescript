@@ -475,6 +475,54 @@ export const validateBooleanOpt = (
 	isUndefined(thing) ? undefined : validateBoolean(thing, context);
 
 /**
+ * Validates that something is \`"Y"\` or \`"N"\`.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param context
+ *   The context to report in error messages.
+ * @return
+ *   * \`true\` if \`thing\` was \`"Y"\`.
+ *   * \`false\` if \`thing\` was \`"N"\`.
+ * @throws {TypeError}
+ *   Throws a \`TypeError\` if \`thing\` was not \`"Y"\` or \`"N"\`.
+ */
+export const validateBooleanYN = (
+	thing: unknown,
+	context: string[]
+): boolean => {
+	if (thing === "Y") {
+		return true;
+	}
+	if (thing === "N") {
+		return false;
+	}
+	throw new TypeError(
+		\`Expected '\${context.join(".")}' to be "Y" or "N", but found: \${thing} (\${typeof thing})\`
+	);
+};
+
+/**
+ * Validates that something is \`"Y"\`, \`"N"\`, \`undefined\`, or \`null\`.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param context
+ *   The context to report in error messages.
+ * @return
+ *   * \`true\` if \`thing\` was \`"Y"\`.
+ *   * \`false\` if \`thing\` was \`"N"\`.
+ *   * \`undefined\` if \`thing\` was \`undefined\` or \`null\`.
+ * @throws {TypeError}
+ *   Throws a \`TypeError\` if \`thing\` was not \`"Y"\`, \`"N"\`, \`undefined\`, or \`null\`.
+ */
+export const validateBooleanYNOpt = (
+	thing: unknown,
+	context: string[]
+): boolean =>
+	isUndefined(thing) ? undefined : validateBooleanYN(thing, context);
+
+/**
  * Validates that something is a number.
  *
  * @param thing
