@@ -1113,132 +1113,136 @@ fs.mkdirSync(apiDir);
 fs.mkdirSync(modelDir);
 
 import prettier from "prettier";
-const writeFile = (f: string, contents: string) => {
-	fs.writeFileSync(
-		f,
-		prettier.format(
-			`/* tslint:disable */\n/* eslint-disable */\n\n${contents}`,
-			{
-				parser: "typescript",
-			}
-		)
-	);
-};
-
-// copy static files
 import { baseApi, baseClient, validate } from "./static";
-switch (mode) {
-	case "api":
-		writeFile(path.resolve(outputDir, "base-api.ts"), baseApi);
-		break;
-	case "client":
-		writeFile(path.resolve(outputDir, "base-client.ts"), baseClient);
-		break;
-}
-writeFile(path.resolve(outputDir, "validate.ts"), validate);
 
 const isReference = (x: any): x is OpenAPIReference => x && "$ref" in x;
 
-for (const [rawName, schema] of Object.entries(schemas)) {
-	const ident = Identifier.fromCamel(rawName);
-	if (isReference(schema)) {
-		throw `Schema ${ident.upperCamel} was a reference`;
-	}
-	let contents: string;
-	switch (schema.type) {
-		case "string":
-			contents = writeEnumModel(ident.upperCamel, schema);
+(async () => {
+	const prettierConfig = {
+		...(await prettier.resolveConfig(outputDir)),
+		parser: "typescript",
+	};
+	const writeFile = (f: string, contents: string) =>
+		fs.writeFileSync(
+			f,
+			prettier.format(
+				`/* tslint:disable */\n/* eslint-disable */\n\n${contents}`,
+				prettierConfig
+			)
+		);
+
+	// copy static files
+	switch (mode) {
+		case "api":
+			writeFile(path.resolve(outputDir, "base-api.ts"), baseApi);
 			break;
-		case "object":
-			contents = writeObjectModel(ident.upperCamel, schema);
+		case "client":
+			writeFile(path.resolve(outputDir, "base-client.ts"), baseClient);
 			break;
-		default:
-			throw `Unexpected schema type: ${schema.type}`;
 	}
-	writeFile(path.resolve(modelDir, `${ident.kebab}.ts`), contents);
-}
+	writeFile(path.resolve(outputDir, "validate.ts"), validate);
 
-const tagIdentifiers: Identifier[] = [];
-for (const [
-	tagName,
-	{ description, operations, ...otherTagProps },
-] of Object.entries(operationsByTag).sort(([a], [b]) => a.localeCompare(b))) {
-	if (Object.entries(otherTagProps).length) {
-		throw `Unexpected properties of tag ${tagName}: ${JSON.stringify(
-			otherTagProps
-		)}`;
+	for (const [rawName, schema] of Object.entries(schemas)) {
+		const ident = Identifier.fromCamel(rawName);
+		if (isReference(schema)) {
+			throw `Schema ${ident.upperCamel} was a reference`;
+		}
+		let contents: string;
+		switch (schema.type) {
+			case "string":
+				contents = writeEnumModel(ident.upperCamel, schema);
+				break;
+			case "object":
+				contents = writeObjectModel(ident.upperCamel, schema);
+				break;
+			default:
+				throw `Unexpected schema type: ${schema.type}`;
+		}
+		writeFile(path.resolve(modelDir, `${ident.kebab}.ts`), contents);
 	}
 
-	if (!operations.length) throw `Tag ${tagName} had no operations`;
+	const tagIdentifiers: Identifier[] = [];
+	for (const [
+		tagName,
+		{ description, operations, ...otherTagProps },
+	] of Object.entries(operationsByTag).sort(([a], [b]) => a.localeCompare(b))) {
+		if (Object.entries(otherTagProps).length) {
+			throw `Unexpected properties of tag ${tagName}: ${JSON.stringify(
+				otherTagProps
+			)}`;
+		}
 
-	const tag = Identifier.fromWords(tagName);
-	tagIdentifiers.push(tag);
+		if (!operations.length) throw `Tag ${tagName} had no operations`;
 
-	let contents: string;
+		const tag = Identifier.fromWords(tagName);
+		tagIdentifiers.push(tag);
+
+		let contents: string;
+		switch (mode) {
+			case "api": {
+				contents = writeApi(tag, description, operations);
+				break;
+			}
+			case "client": {
+				contents = writeClient(tag, description, operations);
+				break;
+			}
+		}
+		writeFile(path.resolve(apiDir, `${tag.kebab}.ts`), contents);
+	}
+
 	switch (mode) {
 		case "api": {
-			contents = writeApi(tag, description, operations);
+			const b = new StringBuilder();
+			b.append('import { Express } from "express";');
+			tagIdentifiers.forEach((tag) => {
+				b.append("import ");
+				b.append(tag.upperCamel);
+				b.append('Api from "./api/');
+				b.append(tag.kebab);
+				b.append('";');
+			});
+			b.append("\n\nexport type Apis = {");
+			tagIdentifiers.forEach((tag) => {
+				b.append(tag.lowerCamel);
+				b.append(": ");
+				b.append(tag.upperCamel);
+				b.append("Api;");
+			});
+			b.append("};\n\nexport default (apis: Apis, app: Express): void => {");
+			tagIdentifiers.forEach((tag) => {
+				b.append("apis.");
+				b.append(tag.lowerCamel);
+				b.append(".registerEndpoints(app);");
+			});
+			b.append("};");
+			writeFile(path.resolve(outputDir, "register-apis.ts"), b.toString());
 			break;
 		}
+
 		case "client": {
-			contents = writeClient(tag, description, operations);
+			const b = new StringBuilder();
+			b.append('import { ClientConfig } from "./base-client";');
+			tagIdentifiers.forEach((tag) => {
+				b.append("import ");
+				b.append(tag.upperCamel);
+				b.append('Client from "./client/');
+				b.append(tag.kebab);
+				b.append('";');
+			});
+			b.append(
+				"\n\nexport default class Clients {constructor(private readonly baseConfig: ClientConfig) {}"
+			);
+			tagIdentifiers.forEach((tag) => {
+				b.append("public readonly ");
+				b.append(tag.lowerCamel);
+				b.append(" = new ");
+				b.append(tag.upperCamel);
+				b.append("Client(this.baseConfig);");
+			});
+			b.append("}");
+			writeFile(path.resolve(outputDir, "clients.ts"), b.toString());
 			break;
 		}
 	}
-	writeFile(path.resolve(apiDir, `${tag.kebab}.ts`), contents);
-}
-
-switch (mode) {
-	case "api": {
-		const b = new StringBuilder();
-		b.append('import { Express } from "express";');
-		tagIdentifiers.forEach((tag) => {
-			b.append("import ");
-			b.append(tag.upperCamel);
-			b.append('Api from "./api/');
-			b.append(tag.kebab);
-			b.append('";');
-		});
-		b.append("\n\nexport type Apis = {");
-		tagIdentifiers.forEach((tag) => {
-			b.append(tag.lowerCamel);
-			b.append(": ");
-			b.append(tag.upperCamel);
-			b.append("Api;");
-		});
-		b.append("};\n\nexport default (apis: Apis, app: Express): void => {");
-		tagIdentifiers.forEach((tag) => {
-			b.append("apis.");
-			b.append(tag.lowerCamel);
-			b.append(".registerEndpoints(app);");
-		});
-		b.append("};");
-		writeFile(path.resolve(outputDir, "register-apis.ts"), b.toString());
-		break;
-	}
-
-	case "client": {
-		const b = new StringBuilder();
-		b.append('import { ClientConfig } from "./base-client";');
-		tagIdentifiers.forEach((tag) => {
-			b.append("import ");
-			b.append(tag.upperCamel);
-			b.append('Client from "./client/');
-			b.append(tag.kebab);
-			b.append('";');
-		});
-		b.append(
-			"\n\nexport default class Clients {constructor(private readonly baseConfig: ClientConfig) {}"
-		);
-		tagIdentifiers.forEach((tag) => {
-			b.append("public readonly ");
-			b.append(tag.lowerCamel);
-			b.append(" = new ");
-			b.append(tag.upperCamel);
-			b.append("Client(this.baseConfig);");
-		});
-		b.append("}");
-		writeFile(path.resolve(outputDir, "clients.ts"), b.toString());
-		break;
-	}
-}
+})();
