@@ -734,9 +734,7 @@ const writeApi = (
 			paramJsDoc.push(prefix, ...splitLines(doc).map((l) => `  ${l}`));
 
 		if (isReference(requestBody)) {
-			throw `Unexpected reference in request body ${method} ${urlToString(
-				url
-			)}`;
+			throw `Unexpected reference in request body ${operationId}`;
 		}
 
 		if (requestBody) {
@@ -744,13 +742,11 @@ const writeApi = (
 				imports,
 				requestBody?.content,
 				requestBody.required || false,
-				`"${urlToString(url)}", "${method}", "requestBody"`
+				`"${operationId}", "requestBody"`
 			);
 			if (requestType) {
 				if (!requestBody.required) {
-					throw `Body is not required for operation ${method} ${urlToString(
-						url
-					)}`;
+					throw `Body is not required for operation ${operationId}`;
 				}
 				paramNames.push("body");
 				paramsWithTypes.push(`body: ${requestType.typeName}`);
@@ -765,9 +761,7 @@ const writeApi = (
 
 		for (const parameter of parameters) {
 			if (isReference(parameter)) {
-				throw `Unexpected reference in parameter of ${method} ${urlToString(
-					url
-				)}`;
+				throw `Unexpected reference in parameter of ${operationId}`;
 			}
 			const {
 				name: paramName,
@@ -777,16 +771,14 @@ const writeApi = (
 				schema: paramSchema,
 			} = parameter;
 			if (!paramSchema) {
-				throw `Expected schema inside of parameter ${paramName} of ${method} ${urlToString(
-					url
-				)}`;
+				throw `Expected schema inside of parameter ${paramName} of ${operationId}`;
 			}
 
 			const type = getTypeFromSchema(
 				imports,
 				paramSchema,
 				paramRequired,
-				`"${urlToString(url)}", "${method}", "${paramType}", "${paramName}"`
+				`"${operationId}", "${paramType}", "${paramName}"`
 			);
 			paramNames.push(paramName);
 			paramsWithTypes.push(`${paramName}: ${type.typeName}`);
@@ -809,19 +801,18 @@ const writeApi = (
 		}
 
 		const { 200: response, ...otherResponses } = responses;
-		if (!response)
-			throw `Expected 200 response of operation ${method} ${urlToString(url)}`;
+		if (!response) throw `Expected 200 response of operation ${operationId}`;
 		if (Object.entries(otherResponses).length) {
 			throw `Unexpected responses of operation`;
 		}
 		if (isReference(response))
-			throw `Unexpected reference in response of ${method} ${urlToString(url)}`;
+			throw `Unexpected reference in response of ${operationId}`;
 		const { content: responseContent } = response;
 		const returnType = getTypeFromContent(
 			imports,
 			responseContent,
 			true,
-			`"${urlToString(url)}", "${method}", "200", "responseBody"`
+			`"${operationId}", "200", "responseBody"`
 		);
 		if (returnType) {
 			addJsDoc("@return", response.description || "Response body.");
@@ -877,9 +868,9 @@ const writeApi = (
 		registerLines.append(");");
 
 		if (Object.entries(otherOperationProps).length) {
-			throw `Unexpected properties of operation ${method} ${urlToString(
-				url
-			)}: ${JSON.stringify(otherOperationProps)}`;
+			throw `Unexpected properties of operation ${operationId}: ${JSON.stringify(
+				otherOperationProps
+			)}`;
 		}
 	}
 
@@ -950,9 +941,7 @@ const writeClient = (
 			paramJsDoc.push(prefix, ...splitLines(doc).map((l) => `  ${l}`));
 
 		if (isReference(requestBody))
-			throw `Unexpected reference in request body ${method} ${urlToString(
-				url
-			)}`;
+			throw `Unexpected reference in request body ${operationId}`;
 
 		let hasBody = false;
 		if (requestBody) {
@@ -960,13 +949,11 @@ const writeClient = (
 				imports,
 				requestBody?.content,
 				requestBody.required || false,
-				`"${urlToString(url)}", "${method}", "requestBody"`
+				`"${operationId}", "requestBody"`
 			);
 			if (requestType) {
 				if (!requestBody.required)
-					throw `Body is not required for operation ${method} ${urlToString(
-						url
-					)}`;
+					throw `Body is not required for operation ${operationId}`;
 				paramNames.push("body");
 				paramsWithTypes.push(`body: ${requestType.typeName}`);
 				addJsDoc("@param body", requestBody.description || "Request body.");
@@ -976,9 +963,7 @@ const writeClient = (
 
 		for (const parameter of parameters) {
 			if (isReference(parameter)) {
-				throw `Unexpected reference in parameter of ${method} ${urlToString(
-					url
-				)}`;
+				throw `Unexpected reference in parameter of ${operationId}`;
 			}
 			const {
 				name: paramName,
@@ -988,21 +973,17 @@ const writeClient = (
 				schema: paramSchema,
 			} = parameter;
 			if (paramType !== "path" && paramType !== "query") {
-				throw `Params should only be path or query: ${paramName} of ${method} ${urlToString(
-					url
-				)}`;
+				throw `Params should only be path or query: ${paramName} of ${operationId}`;
 			}
 			if (!paramSchema) {
-				throw `Expected schema inside of parameter ${paramName} of ${method} ${urlToString(
-					url
-				)}`;
+				throw `Expected schema inside of parameter ${paramName} of ${operationId}`;
 			}
 
 			const type = getTypeFromSchema(
 				imports,
 				paramSchema,
 				paramRequired,
-				`"${urlToString(url)}", "${method}", "${paramType}", "${paramName}"`
+				`"${operationId}", "${paramType}", "${paramName}"`
 			);
 			paramNames.push(paramName);
 			if (paramType === "query") {
@@ -1022,19 +1003,18 @@ const writeClient = (
 		);
 
 		const { 200: response, ...otherResponses } = responses;
-		if (!response)
-			throw `Expected 200 response of operation ${method} ${urlToString(url)}`;
+		if (!response) throw `Expected 200 response of operation ${operationId}`;
 		if (Object.entries(otherResponses).length) {
 			throw `Unexpected responses of operation`;
 		}
 		if (isReference(response))
-			throw `Unexpected reference in response of ${method} ${urlToString(url)}`;
+			throw `Unexpected reference in response of ${operationId}`;
 		const { content: responseContent } = response;
 		const returnType = getTypeFromContent(
 			imports,
 			responseContent,
 			true,
-			`"${urlToString(url)}", "${method}", "200", "responseBody"`
+			`"${operationId}", "200", "responseBody"`
 		);
 		if (returnType) {
 			addJsDoc("@return", response.description || "Response body.");
@@ -1095,9 +1075,9 @@ const writeClient = (
 		b.append(");}");
 
 		if (Object.entries(otherOperationProps).length) {
-			throw `Unexpected properties of operation ${method} ${urlToString(
-				url
-			)}: ${JSON.stringify(otherOperationProps)}`;
+			throw `Unexpected properties of operation ${operationId}: ${JSON.stringify(
+				otherOperationProps
+			)}`;
 		}
 	}
 
