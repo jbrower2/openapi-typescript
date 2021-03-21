@@ -448,6 +448,12 @@ export const validateBoolean = (
 	if (typeof thing === "boolean") {
 		return thing;
 	}
+	if (thing === "true") {
+		return true;
+	}
+	if (thing === "false") {
+		return false;
+	}
 	throw new TypeError(
 		\`Expected '\${context.join(".")}' to be a boolean, but found: \${thing} (\${typeof thing})\`
 	);
@@ -701,7 +707,7 @@ export const validateRecord = <T>(
 	valueMapper: (x: unknown) => T,
 	context: string[]
 ): Record<string, T> => {
-	if (typeof thing === "object") {
+	if (thing && typeof thing === "object") {
 		const record: Record<string, T> = {};
 		for (const [key, value] of Object.entries(thing)) {
 			record[key] = valueMapper(value);
