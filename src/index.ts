@@ -883,7 +883,7 @@ const writeApi = (
 		"",
 		...splitLines(tagDescription)
 	);
-	b.append("export default abstract class ");
+	b.append("export abstract class ");
 	b.append(tag.upperCamel);
 	b.append("Api extends BaseApi {");
 	b.append(abstractMethodLines);
@@ -911,7 +911,7 @@ const writeClient = (
 		...splitLines(tagDescription)
 	);
 	imports.addLocal(undefined, "base-client", "BaseClient");
-	b.append("export default class ");
+	b.append("export class ");
 	b.append(tag.upperCamel);
 	b.append("Client extends BaseClient {");
 
@@ -1189,7 +1189,9 @@ const isReference = (x: any): x is OpenAPIReference => x && "$ref" in x;
 				b.append(tag.upperCamel);
 				b.append("Api;");
 			});
-			b.append("};\n\nexport default (apis: Apis, app: Express): void => {");
+			b.append(
+				"};\n\nexport const registerApis = (apis: Apis, app: Express): void => {"
+			);
 			tagIdentifiers.forEach((tag) => {
 				b.append("apis.");
 				b.append(tag.lowerCamel);
@@ -1211,7 +1213,7 @@ const isReference = (x: any): x is OpenAPIReference => x && "$ref" in x;
 				b.append('";');
 			});
 			b.append(
-				"\n\nexport default class Clients {constructor(private readonly baseConfig: ClientConfig) {}"
+				"\n\nexport class Clients {constructor(private readonly baseConfig: ClientConfig) {}"
 			);
 			tagIdentifiers.forEach((tag) => {
 				b.append("public readonly ");
