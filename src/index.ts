@@ -1176,9 +1176,9 @@ const isReference = (x: any): x is OpenAPIReference => x && "$ref" in x;
 			const b = new StringBuilder();
 			b.append('import { Express } from "express";');
 			tagIdentifiers.forEach((tag) => {
-				b.append("import ");
+				b.append("import { ");
 				b.append(tag.upperCamel);
-				b.append('Api from "./api/');
+				b.append('Api } from "./api/');
 				b.append(tag.kebab);
 				b.append('";');
 			});
@@ -1206,9 +1206,9 @@ const isReference = (x: any): x is OpenAPIReference => x && "$ref" in x;
 			const b = new StringBuilder();
 			b.append('import { ClientConfig } from "./base-client";');
 			tagIdentifiers.forEach((tag) => {
-				b.append("import ");
+				b.append("import { ");
 				b.append(tag.upperCamel);
-				b.append('Client from "./client/');
+				b.append('Client } from "./client/');
 				b.append(tag.kebab);
 				b.append('";');
 			});
