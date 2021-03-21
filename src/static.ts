@@ -349,7 +349,7 @@ import EmailValidator from "email-validator";
  *   * \`true\` if \`thing\` was \`undefined\` or \`null\`.
  *   * \`false\` otherwise.
  */
-export const isUndefined = (thing: unknown): boolean =>
+export const isUndefined = (thing: unknown): thing is undefined | null =>
 	thing === undefined || thing === null;
 
 /**
@@ -528,6 +528,18 @@ export const validateInteger = (thing: unknown, context: string[]): number => {
 	);
 };
 
+/** Options for validating strings. */
+export type ValidateStringOps = {
+	/** Minimum string length. */
+	minLength?: number;
+
+	/** Maximum string length. */
+	maxLength?: number;
+
+	/** Flag to validate proper email format. */
+	email?: true;
+};
+
 /**
  * Validates that something is a string.
  *
@@ -535,81 +547,111 @@ export const validateInteger = (thing: unknown, context: string[]): number => {
  *   The thing to test.
  * @param context
  *   The context to report in error messages.
+ * @param options
+ *   The string validation options (minLength, maxLength, email).
  * @return
  *   \`thing\` if it was a string.
  * @throws {TypeError}
  *   Throws a \`TypeError\` if \`thing\` was not a string.
  */
-export const validateString = (thing: unknown, context: string[]): string => {
-	if (typeof thing === "string") {
-		return thing;
-	}
-	throw new TypeError(
-		\`Expected '\${context.join(".")}' to be a string, but found: \${thing} (\${typeof thing})\`
-	);
-};
-
-/**
- * Validates that a string's length is within a specific range.
- *
- * @param s
- *   The string to test.
- * @param minLength
- *   The minimum string length, or \`undefined\` to skip this validation.
- * @param maxLength
- *   The maximum string length, or \`undefined\` to skip this validation.
- * @param context
- *   The context to report in error messages.
- * @return
- *   \`s\` if its length was in the allowed range.
- * @throws {TypeError}
- *   Throws a \`TypeError\` if the length of \`s\` was not in the allowed range.
- */
-export const validateStringLength = (
-	s: string,
-	minLength: number | undefined,
-	maxLength: number | undefined,
-	context: string[]
+export const validateString = (
+	thing: unknown,
+	context: string[],
+	options: ValidateStringOps = {}
 ): string => {
-	if (
-		(minLength === undefined || s.length >= minLength) &&
-		(maxLength === undefined || s.length <= maxLength)
-	) {
-		return s;
+	if (typeof thing !== "string") {
+		throw new TypeError(
+			\`Expected '\${context.join(
+				"."
+			)}' to be a string, but found: \${thing} (\${typeof thing})\`
+		);
 	}
-	let message: string;
-	if (minLength === undefined) {
-		message = \`at most \${maxLength}\`;
-	} else if (maxLength === undefined) {
-		message = \`at least \${minLength}\`;
-	} else if (minLength === maxLength) {
-		message = \`exactly \${minLength}\`;
-	} else {
-		message = \`between \${minLength} and \${maxLength}\`;
+	const { minLength, maxLength, email } = options;
+	if (
+		minLength !== undefined &&
+		thing.length < minLength &&
+		maxLength !== undefined &&
+		thing.length > maxLength
+	) {
+		const message =
+			minLength === undefined
+				? \`at most \${maxLength}\`
+				: maxLength === undefined
+				? \`at least \${minLength}\`
+				: minLength === maxLength
+				? \`exactly \${minLength}\`
+				: \`between \${minLength} and \${maxLength}\`;
+		throw new TypeError(
+			\`Expected '\${context.join(
+				"."
+			)}' to be \${message} characters, but found: \${thing}\`
+		);
+	}
+	if (email && !EmailValidator.validate(thing)) {
+		throw new TypeError(
+			\`Expected '\${context.join(".")}' to be an email, but found: \${thing}\`
+		);
+	}
+	return thing;
+};
+
+/**
+ * Validates that something is a valid ISO date.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param context
+ *   The context to report in error messages.
+ * @return
+ *   A \`Date\` at midnight UTC if \`thing\` was a valid ISO date.
+ * @throws {TypeError}
+ *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date.
+ */
+export const validateDate = (thing: unknown, context: string[]): Date => {
+	const s = validateString(thing, context, { minLength: 10, maxLength: 10 });
+	const m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(s);
+	if (m) {
+		const [, year, month, day] = m;
+		return new Date(Date.UTC(
+			parseInt(year, 10) - 1970,
+			parseInt(month, 10) - 1,
+			parseInt(day, 10),
+		));
 	}
 	throw new TypeError(
-		\`Expected '\${context.join(".")}' to be \${message} characters, but found: \${s}\`
+		\`Expected '\${context.join(".")}' to be a date, but found: \${s}\`
 	);
 };
 
 /**
- * Validates that a string is a valid email address.
+ * Validates that something is a valid ISO date-time.
  *
- * @param s
- *   The string to test.
+ * @param thing
+ *   The thing to test.
  * @param context
  *   The context to report in error messages.
  * @return
- *   \`s\` if it was a valid email address.
+ *   A \`Date\` if \`thing\` was a valid ISO date-time.
  * @throws {TypeError}
- *   Throws a \`TypeError\` if \`s\` was not a valid email address.
+ *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date-time.
  */
-export const validateEmail = (s: string, context: string[]): string => {
-	if (EmailValidator.validate(s)) {
-		return s;
+export const validateDateTime = (thing: unknown, context: string[]): Date => {
+	const s = validateString(thing, context, { minLength: 24, maxLength: 24 });
+	const m = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})Z$/.exec(s);
+	if (m) {
+		const [, year, month, day, hour, minute, second, millisecond] = m;
+		return new Date(Date.UTC(
+			parseInt(year, 10) - 1970,
+			parseInt(month, 10) - 1,
+			parseInt(day, 10),
+			parseInt(hour, 10),
+			parseInt(minute, 10),
+			parseInt(second, 10),
+			parseInt(millisecond, 10),
+		));
 	}
 	throw new TypeError(
-		\`Expected '\${context.join(".")}' to be an email, but found: \${s}\`
+		\`Expected '\${context.join(".")}' to be a date-time, but found: \${s}\`
 	);
 };
 
@@ -638,6 +680,58 @@ export const validateArray = <T>(
 	throw new TypeError(
 		\`Expected '\${context.join(".")}' to be an array, but found: \${thing} (\${typeof thing})\`
 	);
+};
+
+/**
+ * Validates that something is a record.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param valueMapper
+ *   The function to apply to each object value.
+ * @param context
+ *   The context to report in error messages.
+ * @return
+ *   \`thing\` if it was a record.
+ * @throws {TypeError}
+ *   Throws a \`TypeError\` if \`thing\` was not a record.
+ */
+export const validateRecord = <T>(
+	thing: unknown,
+	valueMapper: (x: unknown) => T,
+	context: string[]
+): Record<string, T> => {
+	if (typeof thing === "object") {
+		const record: Record<string, T> = {};
+		for (const [key, value] of Object.entries(thing)) {
+			record[key] = valueMapper(value);
+		}
+		return record;
+	}
+	throw new TypeError(
+		\`Expected '\${context.join(".")}' to be a record, but found: \${thing} (\${typeof thing})\`
+	);
+};
+
+/**
+ * Converts a record to JSON.
+ *
+ * @param record
+ *   The record to convert.
+ * @param printValue
+ *   The function to convert each object value to JSON.
+ * @return
+ *   A JSON version of \`record\`.
+ */
+export const printRecord = <T>(
+	record: Record<string, T>,
+	printValue: (value: T) => any
+): any => {
+	const result: any = {};
+	for (const [key, value] of Object.entries(record)) {
+		result[key] = printValue(value);
+	}
+	return result;
 };
 
 /**

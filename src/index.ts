@@ -109,9 +109,25 @@ for (const [urlString, methods] of Object.entries(paths)) {
 			throw `Expected 1 tag for ${method} ${urlString}, but found: ${tags}`;
 		}
 		const [tagName] = tags;
-		const tag = operationsByTag[tagName];
-		if (!tag) throw `Could not find tag ${tagName}`;
+		const tag =
+			operationsByTag[tagName] ||
+			(operationsByTag[tagName] = { operations: [] });
 		tag.operations.push({ ...operation, url, method });
+	}
+}
+
+class StringBuilder {
+	private parts: (string | StringBuilder | Imports)[] = [];
+
+	append(part: string | number | boolean | StringBuilder | Imports): this {
+		if (typeof part === "number" || typeof part === "boolean")
+			this.parts.push(part.toString());
+		else this.parts.push(part);
+		return this;
+	}
+
+	toString(): string {
+		return this.parts.join("");
 	}
 }
 
@@ -147,15 +163,22 @@ class Imports {
 		this.addLocal(undefined, "validate", namedImport);
 	}
 
-	getLines(lines: string[]) {
-		const importLines = [];
+	toString(): string {
+		const b = new StringBuilder();
 		for (const [file, { named: namedSet }] of Object.entries(
 			this.imports
 		).sort(([a], [b]) => a.localeCompare(b))) {
 			const named = Array.from(namedSet).sort((a, b) => a.localeCompare(b));
-			importLines.push(`import { ${named.join(", ")} } from "${file}";`);
+			b.append("import{");
+			named.forEach((n, i) => {
+				if (i > 0) b.append(",");
+				b.append(n);
+			});
+			b.append("}from");
+			b.append(JSON.stringify(file));
+			b.append(";");
 		}
-		return importLines.length ? [...importLines, "", ...lines] : lines;
+		return b.toString();
 	}
 }
 
@@ -200,9 +223,6 @@ class Identifier {
 		new Identifier(s.trim().split(/\s+/));
 }
 
-const indent = (s: string, n: number) =>
-	s.replace(/\n/g, `\n${"\t".repeat(n)}`);
-
 const getComponentFromRef = (ref: string) => {
 	const match = /^#\/components\/schemas\/(\w+)$/.exec(ref);
 	if (!match)
@@ -213,270 +233,172 @@ const getComponentFromRef = (ref: string) => {
 const splitLines = (s: string | undefined) =>
 	s ? s.trim().split(/\r?\n/) : [];
 
-const markdownToCommentLines = (...lines: (string | undefined)[]) => {
+const appendMarkdownAsComment = (
+	b: StringBuilder,
+	...lines: (string | undefined)[]
+): StringBuilder => {
 	// remove empty elements from the end
 	while (lines.length && !lines[lines.length - 1]) lines.pop();
 
 	// remove empty elements from the beginning
 	while (lines.length && !lines[0]) lines.shift();
 
-	if (!lines.length) return [];
-	if (lines.length === 1) return [`/** ${lines[0]} */`];
-	return ["/**", ...lines.map((x) => (x ? ` * ${x.trimEnd()}` : " *")), " */"];
+	if (lines.length === 1) {
+		b.append("\n/** ");
+		b.append(lines[0]!);
+		b.append(" */\n");
+	} else if (lines.length) {
+		b.append("\n/**\n");
+		let lastEmpty = false;
+		lines.forEach((x) => {
+			if (x) {
+				lastEmpty = false;
+				b.append(" * ");
+				b.append(x);
+				b.append("\n");
+			} else {
+				if (!lastEmpty) {
+					b.append(" *\n");
+				}
+				lastEmpty = true;
+			}
+		});
+		b.append(" */\n");
+	}
+
+	return b;
 };
 
 const writeEnumModel = (
 	enumName: string,
 	{ description, enum: enumValues }: OpenAPISchema
-) => {
+): string => {
 	if (!enumValues) throw `Expected enum values in ${enumName}`;
-	const lines = [];
-	lines.push('import { validateOneOf } from "../validate";');
-	lines.push("");
-	lines.push(...markdownToCommentLines(...splitLines(description)));
-	lines.push(`export type ${enumName} =`);
+	const b = new StringBuilder();
+	b.append('import { validateOneOf } from "../validate";\n\n');
+	appendMarkdownAsComment(b, ...splitLines(description));
+	b.append("export type ");
+	b.append(enumName);
+	b.append(" = ");
 	enumValues.forEach((enumValue, i) => {
-		let line = `\t| '${enumValue}'`;
-		if (i === enumValues.length - 1) line += ";";
-		lines.push(line);
+		if (i > 0) b.append(" | ");
+		b.append(JSON.stringify(enumValue));
 	});
-	lines.push("");
-	lines.push(`/** Array of ${enumName} values. */`);
-	lines.push(`export const values${enumName}: readonly ${enumName}[] = [`);
-	enumValues.forEach((enumValue) => lines.push(`\t"${enumValue}",`));
-	lines.push("];");
-	lines.push("");
-	lines.push(`/** Convert from ${enumName} to JSON. */`);
-	lines.push(
-		`export const print${enumName} = (value: ${enumName}): any => value;`
-	);
-	lines.push("");
-	lines.push(`/** Convert from JSON to ${enumName}. */`);
-	lines.push(
-		`export const validate${enumName} = (json: any, context: string[] = ["${enumName}"]): ${enumName} =>`
-	);
-	lines.push(`\tvalidateOneOf(json, values${enumName}, context);`);
-	return lines;
+	b.append(";\n\n/** Array of ");
+	b.append(enumName);
+	b.append(" values. */\nexport const values");
+	b.append(enumName);
+	b.append(": readonly ");
+	b.append(enumName);
+	b.append("[] = [");
+	enumValues.forEach((enumValue, i) => {
+		if (i > 0) b.append(",");
+		b.append(JSON.stringify(enumValue));
+	});
+	b.append("];\n\n/** Convert from ");
+	b.append(enumName);
+	b.append(" to JSON. */\nexport const print");
+	b.append(enumName);
+	b.append(" = (value: ");
+	b.append(enumName);
+	b.append("): any => value;\n\n/** Convert from JSON to ");
+	b.append(enumName);
+	b.append(". */\nexport const validate");
+	b.append(enumName);
+	b.append(" = (json: any, context: string[] = []): ");
+	b.append(enumName);
+	b.append(" => validateOneOf(json, values");
+	b.append(enumName);
+	b.append(', [...context, "');
+	b.append(enumName);
+	b.append('"]);');
+	return b.toString();
 };
 
-const writeObjectModel = (objectName: string, objectSchema: OpenAPISchema) => {
+const writeObjectModel = (
+	objectName: string,
+	objectSchema: OpenAPISchema
+): string => {
 	if (!objectSchema.properties) throw `Expected properties in ${objectName}`;
+	const b = new StringBuilder();
 	const imports = new Imports("model");
+	imports.addValidate("validateObject");
 
-	const propertyLines = [];
-	const printLines = [];
-	const validateLines = [];
+	const propertyBuilder = new StringBuilder();
+	const printBuilder = new StringBuilder();
+	const validateBuilder = new StringBuilder();
 
 	for (const [property, propertySchema] of Object.entries(
 		objectSchema.properties
 	)) {
-		propertyLines.push("");
-
 		const required =
 			objectSchema.required !== undefined &&
 			objectSchema.required.includes(property);
 
-		let propertyLine: string;
-		let printLine: string;
-		let validateLine: string;
-
-		if (isReference(propertySchema)) {
-			const ref = propertySchema.$ref;
-			if (!ref)
-				throw `Expected untyped property to have $ref: ${objectName}.${property}`;
-			const name = getComponentFromRef(ref);
-			imports.addLocal("model", name.kebab, name.upperCamel);
-			imports.addLocal("model", name.kebab, `print${name.upperCamel}`);
-			imports.addLocal("model", name.kebab, `validate${name.upperCamel}`);
-
-			propertyLine = name.upperCamel;
-			printLine = `print${name.upperCamel}(value.${property})`;
-			validateLine = `validate${name.upperCamel}(json.${property}, [...context, "${property}"])`;
-		} else {
-			propertyLines.push(
-				...markdownToCommentLines(
-					...splitLines(propertySchema.description)
-				).map((l) => `\t${l}`)
-			);
-
-			propertyLine = propertySchema.type || "";
-			printLine = `value.${property}`;
-
-			switch (propertySchema.type) {
-				case "array": {
-					if (!propertySchema.items)
-						throw `Expected items within ${objectName}.${property}`;
-					const itemSchema = propertySchema.items;
-					if (isReference(itemSchema)) {
-						throw `Array items schema was a reference ${objectName}.${property}`;
-					}
-
-					propertyLine = `${itemSchema.type}[]`;
-
-					switch (itemSchema.type) {
-						case "string": {
-							imports.addValidate("validateString");
-							validateLine = `validateString(x, [...context, "${property}"])`;
-
-							break;
-						}
-
-						default:
-							throw `Unexpected item type: ${itemSchema.type} (${objectName}.${property}.items)`;
-					}
-
-					// TODO use validateOpt method (this will not work)
-					const validateMethod = required
-						? "validateArray"
-						: "validateArrayOpt";
-					imports.addValidate(validateMethod);
-					validateLine = `${validateMethod}(\n\tjson.${property},\n\t(x) => ${validateLine},\n\t[...context, "${property}"],\n)`;
-
-					break;
-				}
-
-				case "boolean": {
-					imports.addValidate("validateBoolean");
-					if (required) {
-						validateLine = `validateBoolean(json.${property}, [...context, "${property}"])`;
-					} else {
-						imports.addValidate("validateOpt");
-						validateLine = `validateOpt(json.${property}, validateBoolean, [...context, "${property}"])`;
-					}
-
-					break;
-				}
-
-				case "integer": {
-					propertyLine = "number";
-
-					imports.addValidate("validateInteger");
-					if (required) {
-						validateLine = `validateInteger(json.${property}, [...context, "${property}"])`;
-					} else {
-						imports.addValidate("validateOpt");
-						validateLine = `validateOpt(json.${property}, validateInteger, [...context, "${property}"])`;
-					}
-
-					break;
-				}
-
-				case "number": {
-					imports.addValidate("validateNumber");
-					if (required) {
-						validateLine = `validateNumber(json.${property}, [...context, "${property}"])`;
-					} else {
-						imports.addValidate("validateOpt");
-						validateLine = `validateOpt(json.${property}, validateNumber, [...context, "${property}"])`;
-					}
-
-					break;
-				}
-
-				case "string": {
-					imports.addValidate("validateString");
-
-					const format = propertySchema.format;
-					const minLength = propertySchema.minLength;
-					const maxLength = propertySchema.maxLength;
-
-					if (
-						format === undefined &&
-						minLength === undefined &&
-						maxLength === undefined
-					) {
-						if (required) {
-							validateLine = `validateString(json.${property}, [...context, "${property}"])`;
-						} else {
-							imports.addValidate("validateOpt");
-							validateLine = `validateOpt(json.${property}, validateString, [...context, "${property}"])`;
-						}
-					} else {
-						validateLine = `validateString(json.${property}, [...context, "${property}"])`;
-						switch (format) {
-							case undefined:
-								break;
-							case "email":
-								imports.addValidate("validateEmail");
-								validateLine = `validateEmail(\n\t${indent(
-									validateLine,
-									1
-								)},\n\t[...context, "${property}"],\n)`;
-								break;
-							default:
-								throw `Unexpected format for ${objectName}.${property}: ${format}`;
-						}
-						if (minLength !== undefined || maxLength !== undefined) {
-							imports.addValidate("validateStringLength");
-							validateLine = `validateStringLength(\n\t${indent(
-								validateLine,
-								1
-							)},\n\t${minLength},\n\t${maxLength},\n\t[...context, "${property}"],\n)`;
-						}
-						if (!required) {
-							imports.addValidate("isUndefined");
-							validateLine = `isUndefined(json.${property}) ? undefined : ${validateLine}`;
-						}
-					}
-
-					break;
-				}
-
-				default:
-					throw `Unexpected property type: ${propertySchema.type} (${objectName}.${property})`;
-			}
-		}
-
-		propertyLines.push(
-			`\treadonly ${property}${required ? "" : "?"}: ${propertyLine};`
+		const { typeName, print, validate } = getTypeFromSchema(
+			imports,
+			propertySchema,
+			required,
+			`...context, "${objectName}", "${property}"`
 		);
 
-		printLines.push(`\t${property}: ${indent(printLine, 1)},`);
+		if (!isReference(propertySchema)) {
+			appendMarkdownAsComment(
+				propertyBuilder,
+				...splitLines(propertySchema.description)
+			);
+		}
 
-		validateLines.push(`\t\t${property}: ${indent(validateLine, 2)},`);
+		propertyBuilder.append("readonly ");
+		propertyBuilder.append(property);
+		if (!required) propertyBuilder.append("?");
+		propertyBuilder.append(": ");
+		propertyBuilder.append(typeName);
+		propertyBuilder.append(";");
+
+		printBuilder.append(property);
+		printBuilder.append(": ");
+		printBuilder.append(
+			print ? print(`value.${property}`) : `value.${property}`
+		);
+		printBuilder.append(",");
+
+		validateBuilder.append(property);
+		validateBuilder.append(": ");
+		validateBuilder.append(validate(`json.${property}`));
+		validateBuilder.append(",");
 	}
 
-	// remove first empty string
-	propertyLines.shift();
-
-	const lines: string[] = [];
-	lines.push(
-		...markdownToCommentLines(...splitLines(objectSchema.description))
-	);
-	lines.push(`export type ${objectName} = {`);
-	lines.push(...propertyLines);
-	lines.push("};");
-	lines.push("");
-	lines.push(`/** Convert from ${objectName} to JSON. */`);
-	lines.push(
-		`export const print${objectName} = (value: ${objectName}): any => ({`
-	);
-	lines.push(...printLines);
-	lines.push("});");
-	lines.push("");
-	lines.push(`/** Convert from JSON to ${objectName}. */`);
-	lines.push(
-		`export const validate${objectName} = (json: any, context: string[] = ["${objectName}"]): ${objectName} =>`
-	);
-	imports.addValidate("validateObject");
-	lines.push(`\tvalidateObject(json, context) && ({`);
-	lines.push(...validateLines);
-	lines.push("\t});");
-	return imports.getLines(lines);
-};
-
-const writeFile = (lines: string[]) => {
-	return [
-		"/* tslint:disable */",
-		"/* eslint-disable */",
-		"",
-		...lines.map((s) => s.trimEnd()),
-		"",
-	].join("\n");
+	b.append(imports);
+	b.append("\n\n");
+	appendMarkdownAsComment(b, ...splitLines(objectSchema.description));
+	b.append("export type ");
+	b.append(objectName);
+	b.append(" = {");
+	b.append(propertyBuilder);
+	b.append("};\n\n/** Convert from ");
+	b.append(objectName);
+	b.append(" to JSON. */\nexport const print");
+	b.append(objectName);
+	b.append(" = (value: ");
+	b.append(objectName);
+	b.append("): any => ({");
+	b.append(printBuilder);
+	b.append("});\n\n/** Convert from JSON to ");
+	b.append(objectName);
+	b.append(". */\nexport const validate");
+	b.append(objectName);
+	b.append(" = (json: any, context: string[] = []): ");
+	b.append(objectName);
+	b.append(" => validateObject(json, context) && ({");
+	b.append(validateBuilder);
+	b.append("});");
+	return b.toString();
 };
 
 type RuntimeType = {
 	typeName: string;
+	print?: (name: string) => string;
 	validate: (name: string) => string;
 };
 
@@ -484,78 +406,289 @@ const getTypeFromSchema = (
 	imports: Imports,
 	schema: OpenAPISchema | OpenAPIReference,
 	required: boolean,
-	context: string[]
+	context: string
 ): RuntimeType => {
-	const contextString = context.map((x) => `"${x}"`).join(", ");
+	const props = new Set(Object.keys(schema));
 	if (isReference(schema)) {
+		props.delete("$ref");
+		if (props.size) {
+			throw `Unexpected properties of schema reference '${context}': ${Array.from(
+				props
+			)}`;
+		}
 		const ident = getComponentFromRef(schema.$ref);
 		imports.addLocal("model", ident.kebab, ident.upperCamel);
 		return {
 			typeName: required ? ident.upperCamel : `${ident.upperCamel} | undefined`,
+			print: (name) => {
+				const printMethod = `print${ident.upperCamel}`;
+				imports.addLocal("model", ident.kebab, printMethod);
+				if (required) {
+					return `${printMethod}(${name})`;
+				}
+				imports.addValidate("isUndefined");
+				return `isUndefined(${name}) ? undefined : ${printMethod}(${name})`;
+			},
 			validate: (name) => {
 				const validateMethod = `validate${ident.upperCamel}`;
 				imports.addLocal("model", ident.kebab, validateMethod);
-				if (required) return `${validateMethod}(${name}, [${contextString}])`;
+				if (required) {
+					return `${validateMethod}(${name}, [${context}])`;
+				}
 				imports.addValidate("isUndefined");
-				return `isUndefined(${name}) ? undefined : ${validateMethod}(${name}, [${contextString}])`;
+				return `isUndefined(${name}) ? undefined : ${validateMethod}(${name}, [${context}])`;
 			},
 		};
 	}
 
-	const { type, items } = schema;
+	props.delete("description");
+	props.delete("type");
+	const {
+		type,
+		format,
+		minLength,
+		maxLength,
+		additionalProperties,
+		items,
+	} = schema;
 	switch (type) {
-		case "array": {
-			if (!items) {
-				throw `Expected 'items' inside '${context.join(".")}'`;
+		case "string": {
+			switch (format) {
+				case undefined:
+				case "email": {
+					props.delete("minLength");
+					props.delete("maxLength");
+					if (props.size) {
+						throw `Unexpected properties of string schema '${context}': ${Array.from(
+							props
+						)}`;
+					}
+
+					return {
+						typeName: required ? "string" : "string | undefined",
+						validate: (name) => {
+							const options: string[] = [];
+							if (minLength) {
+								options.push(`minLength: ${minLength}`);
+							}
+							if (maxLength === 0) {
+								throw `Unexpected maxLength of 0 in '${context}'`;
+							}
+							if (maxLength) {
+								options.push(`maxLength: ${maxLength}`);
+							}
+							if (format === "email") {
+								options.push("email: true");
+							}
+							const optionsString = options.length
+								? `, { ${options.join(", ")} }`
+								: "";
+							imports.addValidate("validateString");
+							if (required) {
+								return `validateString(${name}, [${context}]${optionsString})`;
+							}
+							imports.addValidate("validateOpt");
+							if (!optionsString) {
+								return `validateOpt(${name}, validateString, [${context}])`;
+							}
+							return `validateOpt(${name}, (thing, context) => validateString(thing, context${optionsString}), [${context}])`;
+						},
+					};
+				}
+
+				case "date": {
+					props.delete("format");
+					if (props.size) {
+						throw `Unexpected properties of date schema '${context}': ${Array.from(
+							props
+						)}`;
+					}
+
+					return {
+						typeName: "Date",
+						print: (name) => {
+							if (required) {
+								return `${name}.toISOString().substring(0, 10)`;
+							}
+							imports.addValidate("isUndefined");
+							return `isUndefined(${name}) ? undefined : ${name}.toISOString().substring(0, 10)`;
+						},
+						validate: (name) => {
+							imports.addValidate("validateDate");
+							if (required) {
+								return `validateDate(${name}, [${context}])`;
+							}
+							imports.addValidate("validateOpt");
+							return `validateOpt(${name}, validateDate, [${context}])`;
+						},
+					};
+				}
+
+				case "date-time": {
+					props.delete("format");
+					if (props.size) {
+						throw `Unexpected properties of date-time schema '${context}': ${Array.from(
+							props
+						)}`;
+					}
+
+					return {
+						typeName: "Date",
+						print: (name) => {
+							if (required) {
+								return `${name}.toISOString()`;
+							}
+							imports.addValidate("isUndefined");
+							return `isUndefined(${name}) ? undefined : ${name}.toISOString()`;
+						},
+						validate: (name) => {
+							imports.addValidate("validateDateTime");
+							if (required) {
+								return `validateDateTime(${name}, [${context}])`;
+							}
+							imports.addValidate("validateOpt");
+							return `validateOpt(${name}, validateDateTime, [${context}])`;
+						},
+					};
+				}
+
+				default:
+					throw `Unexpected string format '${format}' of '${context}'`;
 			}
-			const { typeName, validate } = getTypeFromSchema(imports, items, true, [
-				...context,
-				"items",
-			]);
-			return {
-				typeName: required ? `${typeName}[]` : `${typeName}[] | undefined`,
-				validate: (name) => {
-					const inner = validate("x");
-					// TODO use validateOpt method (this will not work)
-					let validateMethod = "validateArray";
-					if (!required) validateMethod += "Opt";
-					imports.addValidate(validateMethod);
-					return `${validateMethod}(\n\t${name},\n\t(x) => ${inner},\n\t[${contextString}],\n)`;
-				},
-			};
 		}
 
 		case "boolean":
 		case "integer":
-		case "number":
-		case "string":
+		case "number": {
+			if (props.size) {
+				throw `Unexpected properties of ${type} schema '${context}': ${Array.from(
+					props
+				)}`;
+			}
+
 			const typeName = type === "integer" ? "number" : type;
 			return {
 				typeName: required ? typeName : `${typeName} | undefined`,
 				validate: (name) => {
-					const validateMethod = `validate${capitalize(type)}`;
+					const validateMethod =
+						format === "email"
+							? "validateEmail"
+							: `validate${capitalize(type)}`;
 					imports.addValidate(validateMethod);
 					if (required) {
-						return `${validateMethod}(${name}, [${contextString}])`;
+						return `${validateMethod}(${name}, [${context}])`;
 					}
 					imports.addValidate("validateOpt");
-					return `validateOpt(${name}, ${validateMethod}, [${contextString}])`;
+					return `validateOpt(${name}, ${validateMethod}, [${context}])`;
 				},
 			};
+		}
+
+		case "object": {
+			props.delete("additionalProperties");
+			if (props.size) {
+				throw `Unexpected properties of array schema '${context}': ${Array.from(
+					props
+				)}`;
+			}
+
+			if (typeof additionalProperties === "boolean") {
+				throw `Expected 'additionalProperties' inside '${context}' to be a schema or reference, but found: ${additionalProperties}`;
+			}
+
+			if (!additionalProperties) {
+				throw `Expected 'additionalProperties' inside '${context}'`;
+			}
+
+			const { typeName, print, validate } = getTypeFromSchema(
+				imports,
+				additionalProperties,
+				true,
+				`${context}, "additionalProperties"`
+			);
+			return {
+				typeName: required
+					? `Record<string, ${typeName}>`
+					: `Record<string, ${typeName}> | undefined`,
+				...(print && {
+					print: (name) => {
+						const inner = print("x");
+						imports.addValidate("printRecord");
+						if (required) {
+							return `printRecord(${name}, (x) => ${inner})`;
+						}
+						imports.addValidate("isUndefined");
+						return `isUndefined(${name}) ? undefined : printRecord(${name}, (x) => ${inner})`;
+					},
+				}),
+				validate: (name) => {
+					const inner = validate("x");
+					imports.addValidate("validateRecord");
+					if (required) {
+						return `validateRecord(${name}, (x) => ${inner}, [${context}])`;
+					}
+					imports.addValidate("validateOpt");
+					return `validateOpt(${name}, (thing, context) => validateRecord(thing, (x) => ${inner}, context), [${context}])`;
+				},
+			};
+		}
+
+		case "array": {
+			props.delete("items");
+			if (props.size) {
+				throw `Unexpected properties of array schema '${context}': ${Array.from(
+					props
+				)}`;
+			}
+
+			if (!items) {
+				throw `Expected 'items' inside '${context}'`;
+			}
+
+			const { typeName, print, validate } = getTypeFromSchema(
+				imports,
+				items,
+				true,
+				`${context}, "items"`
+			);
+			return {
+				typeName: required ? `${typeName}[]` : `${typeName}[] | undefined`,
+				...(print && {
+					print: (name) => {
+						const inner = print("x");
+						if (required) {
+							return `${name}.map((x) => ${inner})`;
+						}
+						imports.addValidate("isUndefined");
+						return `isUndefined(${name}) ? undefined : ${name}.map((x) => ${inner})`;
+					},
+				}),
+				validate: (name) => {
+					const inner = validate("x");
+					imports.addValidate("validateArray");
+					if (required) {
+						return `validateArray(${name}, (x) => ${inner}, [${context}])`;
+					}
+					imports.addValidate("validateOpt");
+					return `validateOpt(${name}, (thing, context) => validateArray(thing, (x) => ${inner}, context), [${context}])`;
+				},
+			};
+		}
 
 		default:
-			throw `Unexpected type '${type}' of '${context.join(".")}'`;
+			throw `Unexpected type '${type}' of '${context}'`;
 	}
 };
 
 const getTypeFromContent = (
 	imports: Imports,
-	content: { [key: string]: OpenAPIMediaType },
+	content: Record<string, OpenAPIMediaType> | undefined,
 	required: boolean,
-	context: string[]
+	context: string
 ) => {
 	if (!content) return;
 	const { "application/json": jsonContent } = content;
+	if (!jsonContent) return;
 	const { schema } = jsonContent;
 	if (!schema) return;
 	return getTypeFromSchema(imports, schema, required, context);
@@ -565,13 +698,18 @@ const writeApi = (
 	tag: Identifier,
 	tagDescription: string | undefined,
 	operations: OperationExtended[]
-) => {
+): string => {
 	const imports = new Imports("api");
+	imports.addLocal(undefined, "base-api", "BaseApi");
+	imports.addGlobal("express", "Express");
+	imports.addGlobal("express", "Request");
+	imports.addGlobal("express", "Response");
 
-	const abstractMethodLines = [];
-	const registerLines = [];
+	const abstractMethodLines = new StringBuilder();
+	const registerLines = new StringBuilder();
 
 	for (const {
+		summary,
 		description,
 		method,
 		operationId,
@@ -583,34 +721,44 @@ const writeApi = (
 		url,
 		...otherOperationProps
 	} of operations) {
+		if (!operationId) {
+			throw `Expected operation ID for ${method} ${urlToString(url)}`;
+		}
+
 		const paramNames: string[] = [];
 		const paramsWithTypes: string[] = [];
-		const paramLines: string[] = [];
+		const paramLines = new StringBuilder();
 		const paramJsDoc: string[] = [];
 
 		const addJsDoc = (prefix: string, doc: string) =>
 			paramJsDoc.push(prefix, ...splitLines(doc).map((l) => `  ${l}`));
 
-		if (isReference(requestBody))
+		if (isReference(requestBody)) {
 			throw `Unexpected reference in request body ${method} ${urlToString(
 				url
 			)}`;
+		}
 
 		if (requestBody) {
 			const requestType = getTypeFromContent(
 				imports,
 				requestBody?.content,
 				requestBody.required || false,
-				[urlToString(url), method, "requestBody"]
+				`"${urlToString(url)}", "${method}", "requestBody"`
 			);
 			if (requestType) {
-				if (!requestBody.required)
+				if (!requestBody.required) {
 					throw `Body is not required for operation ${method} ${urlToString(
 						url
 					)}`;
+				}
 				paramNames.push("body");
 				paramsWithTypes.push(`body: ${requestType.typeName}`);
-				paramLines.push(`const body = ${requestType.validate("req.body")};`);
+
+				paramLines.append("const body = ");
+				paramLines.append(requestType.validate("req.body"));
+				paramLines.append(";");
+
 				addJsDoc("@param body", requestBody.description || "Request body.");
 			}
 		}
@@ -634,19 +782,25 @@ const writeApi = (
 				)}`;
 			}
 
-			const type = getTypeFromSchema(imports, paramSchema, paramRequired, [
-				urlToString(url),
-				method,
-				paramType,
-				paramName,
-			]);
+			const type = getTypeFromSchema(
+				imports,
+				paramSchema,
+				paramRequired,
+				`"${urlToString(url)}", "${method}", "${paramType}", "${paramName}"`
+			);
 			paramNames.push(paramName);
 			paramsWithTypes.push(`${paramName}: ${type.typeName}`);
-			paramLines.push(
-				`const ${paramName} = ${type.validate(
+
+			paramLines.append("const ");
+			paramLines.append(paramName);
+			paramLines.append(" = ");
+			paramLines.append(
+				type.validate(
 					`req.${paramType === "path" ? "params" : paramType}.${paramName}`
-				)};`
+				)
 			);
+			paramLines.append(";");
+
 			addJsDoc(
 				`@param ${paramName}`,
 				paramDescription ||
@@ -663,69 +817,64 @@ const writeApi = (
 		if (isReference(response))
 			throw `Unexpected reference in response of ${method} ${urlToString(url)}`;
 		const { content: responseContent } = response;
-		if (!responseContent)
-			throw `Expected content for response of ${method} ${urlToString(url)}`;
-		const returnType = getTypeFromContent(imports, responseContent, true, [
-			urlToString(url),
-			method,
-			"200",
-			`responseBody`,
-		]);
+		const returnType = getTypeFromContent(
+			imports,
+			responseContent,
+			true,
+			`"${urlToString(url)}", "${method}", "200", "responseBody"`
+		);
 		if (returnType) {
 			addJsDoc("@return", response.description || "Response body.");
 		}
 
-		abstractMethodLines.push(
-			...markdownToCommentLines(description, "", ...paramJsDoc).map(
-				(x) => `\t${x}`
-			)
+		appendMarkdownAsComment(
+			abstractMethodLines,
+			summary,
+			"",
+			description,
+			"",
+			...paramJsDoc
 		);
-		if (paramsWithTypes.length) {
-			abstractMethodLines.push(`\tabstract ${operationId}(`);
-			paramsWithTypes.forEach((p) => abstractMethodLines.push(`\t\t${p},`));
-			abstractMethodLines.push(
-				`\t): Promise<${returnType ? returnType.typeName : "void"}>;`
-			);
-		} else {
-			abstractMethodLines.push(
-				`\tabstract ${operationId}(): Promise<${
-					returnType ? returnType.typeName : "void"
-				}>;`
-			);
-		}
-		abstractMethodLines.push("");
+		abstractMethodLines.append("abstract ");
+		abstractMethodLines.append(operationId);
+		abstractMethodLines.append("(");
+		paramsWithTypes.forEach((p, i) => {
+			if (i > 0) abstractMethodLines.append(",");
+			abstractMethodLines.append(p);
+		});
+		abstractMethodLines.append("): Promise<");
+		abstractMethodLines.append(returnType ? returnType.typeName : "void");
+		abstractMethodLines.append(">;\n\n");
 
-		let urlString: string;
-		if (typeof url === "string") urlString = url;
+		const urlString = new StringBuilder();
+		if (typeof url === "string") urlString.append(url);
 		else {
-			urlString = "";
 			for (const { type, value } of url.parts) {
-				if (type === "param") urlString += ":";
-				urlString += value;
+				if (type === "param") urlString.append(":");
+				urlString.append(value);
 			}
 		}
-		urlString = JSON.stringify(urlString);
 
 		// TODO authentication
-		imports.addGlobal("express", "Request");
-		imports.addGlobal("express", "Response");
-		registerLines.push(
-			`\t\tapp.${method.toLowerCase()}(${urlString}, (req: Request, res: Response) =>`
+		registerLines.append("app.");
+		registerLines.append(method.toLowerCase());
+		registerLines.append("(");
+		registerLines.append(JSON.stringify(urlString.toString()));
+		registerLines.append(
+			", (req: Request, res: Response) => this.handleResponse(res, "
 		);
 		if (paramNames.length) {
-			registerLines.push("\t\t\tthis.handleResponse(res, (async () => {");
-			registerLines.push(...paramLines.map((l) => `\t\t\t\t${l}`));
-			registerLines.push(
-				`\t\t\t\treturn await this.${operationId}(${paramNames.join(", ")});`
-			);
-			registerLines.push("\t\t\t})())");
+			registerLines.append("(async () => {");
+			registerLines.append(paramLines);
+			registerLines.append("return await this.");
+			registerLines.append(operationId);
+			registerLines.append("(");
+			registerLines.append(paramNames.join());
+			registerLines.append(");})())");
 		} else {
-			registerLines.push(
-				`\t\t\tthis.handleResponse(res, this.${operationId}())`
-			);
+			registerLines.append(`this.${operationId}())`);
 		}
-		registerLines.push("\t\t);");
-		registerLines.push("");
+		registerLines.append(");");
 
 		if (Object.entries(otherOperationProps).length) {
 			throw `Unexpected properties of operation ${method} ${urlToString(
@@ -734,52 +883,49 @@ const writeApi = (
 		}
 	}
 
-	// remove last empty line
-	registerLines.pop();
-
-	const lines = [];
-	lines.push(
-		...markdownToCommentLines(
-			`${tag.display} api.`,
-			"",
-			...splitLines(tagDescription)
-		)
+	const b = new StringBuilder();
+	b.append(imports);
+	b.append("\n\n");
+	appendMarkdownAsComment(
+		b,
+		`${tag.display} api.`,
+		"",
+		...splitLines(tagDescription)
 	);
-	imports.addLocal(undefined, "base-api", "BaseApi");
-	lines.push(
-		`export default abstract class ${tag.upperCamel}Api extends BaseApi {`
+	b.append("export default abstract class ");
+	b.append(tag.upperCamel);
+	b.append("Api extends BaseApi {");
+	b.append(abstractMethodLines);
+	b.append(
+		"/** Register all endpoints. */\nregisterEndpoints(app: Express): void {"
 	);
-	lines.push(...abstractMethodLines);
-	lines.push("\t/** Register all endpoints. */");
-	imports.addGlobal("express", "Express");
-	lines.push("\tregisterEndpoints(app: Express): void {");
-	lines.push(...registerLines);
-	lines.push("\t}");
-	lines.push("}");
-	return imports.getLines(lines);
+	b.append(registerLines);
+	b.append("}}");
+	return b.toString();
 };
 
 const writeClient = (
 	tag: Identifier,
 	tagDescription: string | undefined,
 	operations: OperationExtended[]
-) => {
+): string => {
+	const b = new StringBuilder();
 	const imports = new Imports("client");
 
-	const lines = [];
-	lines.push(
-		...markdownToCommentLines(
-			`${tag.display} client.`,
-			"",
-			...splitLines(tagDescription)
-		)
+	b.append(imports);
+	appendMarkdownAsComment(
+		b,
+		`${tag.display} client.`,
+		"",
+		...splitLines(tagDescription)
 	);
 	imports.addLocal(undefined, "base-client", "BaseClient");
-	lines.push(
-		`export default class ${tag.upperCamel}Client extends BaseClient {`
-	);
+	b.append("export default class ");
+	b.append(tag.upperCamel);
+	b.append("Client extends BaseClient {");
 
 	for (const {
+		summary,
 		description,
 		method,
 		operationId,
@@ -791,6 +937,10 @@ const writeClient = (
 		url,
 		...otherOperationProps
 	} of operations) {
+		if (!operationId) {
+			throw `Expected operation ID for ${method} ${urlToString(url)}`;
+		}
+
 		const paramNames: string[] = [];
 		const paramsWithTypes: string[] = [];
 		const queryParamNames: string[] = [];
@@ -810,7 +960,7 @@ const writeClient = (
 				imports,
 				requestBody?.content,
 				requestBody.required || false,
-				[urlToString(url), method, "requestBody"]
+				`"${urlToString(url)}", "${method}", "requestBody"`
 			);
 			if (requestType) {
 				if (!requestBody.required)
@@ -848,12 +998,12 @@ const writeClient = (
 				)}`;
 			}
 
-			const type = getTypeFromSchema(imports, paramSchema, paramRequired, [
-				urlToString(url),
-				method,
-				paramType,
-				paramName,
-			]);
+			const type = getTypeFromSchema(
+				imports,
+				paramSchema,
+				paramRequired,
+				`"${urlToString(url)}", "${method}", "${paramType}", "${paramName}"`
+			);
 			paramNames.push(paramName);
 			if (paramType === "query") {
 				queryParamNames.push(paramName);
@@ -880,65 +1030,69 @@ const writeClient = (
 		if (isReference(response))
 			throw `Unexpected reference in response of ${method} ${urlToString(url)}`;
 		const { content: responseContent } = response;
-		if (!responseContent)
-			throw `Expected content for response of ${method} ${urlToString(url)}`;
-		const returnType = getTypeFromContent(imports, responseContent, true, [
-			urlToString(url),
-			method,
-			"200",
-			`responseBody`,
-		]);
+		const returnType = getTypeFromContent(
+			imports,
+			responseContent,
+			true,
+			`"${urlToString(url)}", "${method}", "200", "responseBody"`
+		);
 		if (returnType) {
 			addJsDoc("@return", response.description || "Response body.");
 		}
 
 		// TODO add auth header
 
-		lines.push(
-			...markdownToCommentLines(description, "", ...paramJsDoc).map(
-				(x) => `\t${x}`
-			)
-		);
-		lines.push(`\t${operationId}(`);
-		paramsWithTypes.forEach((p) => lines.push(`\t\t${p},`));
+		appendMarkdownAsComment(b, summary, "", description, "", ...paramJsDoc);
+		b.append(operationId);
+		b.append("(");
+		b.append(paramsWithTypes.join());
 		imports.addLocal(undefined, "base-client", "ClientConfig");
-		lines.push("\t\toverrideConfig: Partial<ClientConfig> = {}");
-		lines.push(`\t): Promise<${returnType ? returnType.typeName : "void"}> {`);
-		lines.push("\t\treturn this.fetch(");
-		lines.push("\t\t\toverrideConfig,");
-		lines.push(`\t\t\t"${method}",`);
+		b.append(",overrideConfig: Partial<ClientConfig> = {}): Promise<");
+		b.append(returnType ? returnType.typeName : "void");
+		b.append('> {return this.fetch(overrideConfig, "');
+		b.append(method);
+		b.append('",');
 		if (!queryParamNames.length && typeof url === "string") {
-			lines.push(`\t\t\t${JSON.stringify(url)},`);
+			b.append(JSON.stringify(url));
+			b.append(",");
 		} else {
 			imports.addLocal(undefined, "base-client", "UrlBuilder");
-			lines.push("\t\t\tnew UrlBuilder()");
+			b.append("new UrlBuilder()");
 			if (typeof url === "string") {
-				lines.push(`\t\t\t\t.addLiteral(${JSON.stringify(url)})`);
+				b.append(".addLiteral(");
+				b.append(JSON.stringify(url));
+				b.append(")");
 			} else {
 				for (const { type, value } of url.parts) {
 					if (type === "literal") {
-						lines.push(`\t\t\t\t.addLiteral(${JSON.stringify(value)})`);
+						b.append(".addLiteral(");
+						b.append(JSON.stringify(value));
+						b.append(")");
 					} else {
-						lines.push(`\t\t\t\t.addPathParam(${value})`);
+						b.append(".addPathParam(");
+						b.append(value);
+						b.append(")");
 					}
 				}
 			}
 			for (const p of queryParamNames) {
-				lines.push(`\t\t\t\t.addQuery(${JSON.stringify(p)}, ${p})`);
+				b.append(".addQuery(");
+				b.append(JSON.stringify(p));
+				b.append(", ");
+				b.append(p);
+				b.append(")");
 			}
-			lines.push("\t\t\t\t.toString(),");
+			b.append(".toString(),");
 		}
 		if (hasBody) {
-			lines.push("\t\t\tbody,");
+			b.append("body,");
 		}
 		if (returnType) {
-			lines.push(
-				`\t\t\t(json: any) => ${indent(returnType.validate("json"), 3)},`
-			);
+			b.append("(json: any) => ");
+			b.append(returnType.validate("json"));
+			b.append(",");
 		}
-		lines.push("\t\t);");
-		lines.push("\t}");
-		lines.push("");
+		b.append(");}");
 
 		if (Object.entries(otherOperationProps).length) {
 			throw `Unexpected properties of operation ${method} ${urlToString(
@@ -947,11 +1101,8 @@ const writeClient = (
 		}
 	}
 
-	// remove last blank line
-	lines.pop();
-
-	lines.push("}");
-	return imports.getLines(lines);
+	b.append("}");
+	return b.toString();
 };
 
 import path from "path";
@@ -961,44 +1112,50 @@ const modelDir = path.resolve(outputDir, "model");
 fs.mkdirSync(apiDir);
 fs.mkdirSync(modelDir);
 
+import prettier from "prettier";
+const writeFile = (f: string, contents: string) => {
+	fs.writeFileSync(
+		f,
+		prettier.format(
+			`/* tslint:disable */\n/* eslint-disable */\n\n${contents}`,
+			{
+				parser: "typescript",
+			}
+		)
+	);
+};
+
 // copy static files
 import { baseApi, baseClient, validate } from "./static";
 switch (mode) {
 	case "api":
-		fs.writeFileSync(
-			path.resolve(outputDir, "base-api.ts"),
-			writeFile(splitLines(baseApi.trim()))
-		);
+		writeFile(path.resolve(outputDir, "base-api.ts"), baseApi);
 		break;
 	case "client":
-		fs.writeFileSync(
-			path.resolve(outputDir, "base-client.ts"),
-			writeFile(splitLines(baseClient.trim()))
-		);
+		writeFile(path.resolve(outputDir, "base-client.ts"), baseClient);
 		break;
 }
-fs.writeFileSync(
-	path.resolve(outputDir, "validate.ts"),
-	writeFile(splitLines(validate.trim()))
-);
+writeFile(path.resolve(outputDir, "validate.ts"), validate);
 
 const isReference = (x: any): x is OpenAPIReference => x && "$ref" in x;
 
 for (const [rawName, schema] of Object.entries(schemas)) {
 	const ident = Identifier.fromCamel(rawName);
-	if (isReference(schema)) throw `Schema ${ident.upperCamel} was a reference`;
-	let contents;
+	if (isReference(schema)) {
+		throw `Schema ${ident.upperCamel} was a reference`;
+	}
+	let contents: string;
 	switch (schema.type) {
 		case "string":
-			contents = writeFile(writeEnumModel(ident.upperCamel, schema));
+			contents = writeEnumModel(ident.upperCamel, schema);
 			break;
 		case "object":
-			contents = writeFile(writeObjectModel(ident.upperCamel, schema));
+			contents = writeObjectModel(ident.upperCamel, schema);
 			break;
 		default:
 			throw `Unexpected schema type: ${schema.type}`;
 	}
-	fs.writeFileSync(path.resolve(modelDir, `${ident.kebab}.ts`), contents);
+	writeFile(path.resolve(modelDir, `${ident.kebab}.ts`), contents);
 }
 
 const tagIdentifiers: Identifier[] = [];
@@ -1017,7 +1174,7 @@ for (const [
 	const tag = Identifier.fromWords(tagName);
 	tagIdentifiers.push(tag);
 
-	let contents: string[];
+	let contents: string;
 	switch (mode) {
 		case "api": {
 			contents = writeApi(tag, description, operations);
@@ -1028,56 +1185,60 @@ for (const [
 			break;
 		}
 	}
-	fs.writeFileSync(
-		path.resolve(apiDir, `${tag.kebab}.ts`),
-		writeFile(contents)
-	);
+	writeFile(path.resolve(apiDir, `${tag.kebab}.ts`), contents);
 }
 
 switch (mode) {
-	case "api":
-		fs.writeFileSync(
-			path.resolve(outputDir, "register-apis.ts"),
-			writeFile([
-				'import { Express } from "express";',
-				...tagIdentifiers.map(
-					(tag) => `import ${tag.upperCamel}Api from "./api/${tag.kebab}";`
-				),
-				"",
-				"export type Apis = {",
-				...tagIdentifiers.map(
-					(tag) => `\t${tag.lowerCamel}: ${tag.upperCamel}Api;`
-				),
-				"};",
-				"",
-				"export default (apis: Apis, app: Express): void => {",
-				...tagIdentifiers.map(
-					(tag) => `\tapis.${tag.lowerCamel}.registerEndpoints(app);`
-				),
-				"};",
-			])
-		);
+	case "api": {
+		const b = new StringBuilder();
+		b.append('import { Express } from "express";');
+		tagIdentifiers.forEach((tag) => {
+			b.append("import ");
+			b.append(tag.upperCamel);
+			b.append('Api from "./api/');
+			b.append(tag.kebab);
+			b.append('";');
+		});
+		b.append("\n\nexport type Apis = {");
+		tagIdentifiers.forEach((tag) => {
+			b.append(tag.lowerCamel);
+			b.append(": ");
+			b.append(tag.upperCamel);
+			b.append("Api;");
+		});
+		b.append("};\n\nexport default (apis: Apis, app: Express): void => {");
+		tagIdentifiers.forEach((tag) => {
+			b.append("apis.");
+			b.append(tag.lowerCamel);
+			b.append(".registerEndpoints(app);");
+		});
+		b.append("};");
+		writeFile(path.resolve(outputDir, "register-apis.ts"), b.toString());
 		break;
+	}
 
-	case "client":
-		fs.writeFileSync(
-			path.resolve(outputDir, "clients.ts"),
-			writeFile([
-				'import { ClientConfig } from "./base-client";',
-				...tagIdentifiers.map(
-					(tag) =>
-						`import ${tag.upperCamel}Client from "./client/${tag.kebab}";`
-				),
-				"",
-				"export default class Clients {",
-				"\tconstructor(private readonly baseConfig: ClientConfig) {}",
-				"",
-				...tagIdentifiers.map(
-					(tag) =>
-						`\tpublic readonly ${tag.lowerCamel} = new ${tag.upperCamel}Client(this.baseConfig);`
-				),
-				"}",
-			])
+	case "client": {
+		const b = new StringBuilder();
+		b.append('import { ClientConfig } from "./base-client";');
+		tagIdentifiers.forEach((tag) => {
+			b.append("import ");
+			b.append(tag.upperCamel);
+			b.append('Client from "./client/');
+			b.append(tag.kebab);
+			b.append('";');
+		});
+		b.append(
+			"\n\nexport default class Clients {constructor(private readonly baseConfig: ClientConfig) {}"
 		);
+		tagIdentifiers.forEach((tag) => {
+			b.append("public readonly ");
+			b.append(tag.lowerCamel);
+			b.append(" = new ");
+			b.append(tag.upperCamel);
+			b.append("Client(this.baseConfig);");
+		});
+		b.append("}");
+		writeFile(path.resolve(outputDir, "clients.ts"), b.toString());
 		break;
+	}
 }
