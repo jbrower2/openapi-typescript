@@ -165,6 +165,7 @@ class Imports {
 
 	toString(): string {
 		const b = new StringBuilder();
+		b.append("\n\n");
 		for (const [file, { named: namedSet }] of Object.entries(
 			this.imports
 		).sort(([a], [b]) => a.localeCompare(b))) {
@@ -178,6 +179,7 @@ class Imports {
 			b.append(JSON.stringify(file));
 			b.append(";");
 		}
+		b.append("\n\n");
 		return b.toString();
 	}
 }
@@ -370,7 +372,6 @@ const writeObjectModel = (
 	}
 
 	b.append(imports);
-	b.append("\n\n");
 	appendMarkdownAsComment(b, ...splitLines(objectSchema.description));
 	b.append("export type ");
 	b.append(objectName);
@@ -876,7 +877,6 @@ const writeApi = (
 
 	const b = new StringBuilder();
 	b.append(imports);
-	b.append("\n\n");
 	appendMarkdownAsComment(
 		b,
 		`${tag.display} api.`,
@@ -1025,9 +1025,12 @@ const writeClient = (
 		appendMarkdownAsComment(b, summary, "", description, "", ...paramJsDoc);
 		b.append(operationId);
 		b.append("(");
-		b.append(paramsWithTypes.join());
+		paramsWithTypes.forEach((p) => {
+			b.append(p);
+			b.append(",");
+		});
 		imports.addLocal(undefined, "base-client", "ClientConfig");
-		b.append(",overrideConfig: Partial<ClientConfig> = {}): Promise<");
+		b.append("overrideConfig: Partial<ClientConfig> = {}): Promise<");
 		b.append(returnType ? returnType.typeName : "void");
 		b.append('> {return this.fetch(overrideConfig, "');
 		b.append(method);
