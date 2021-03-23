@@ -438,7 +438,7 @@ const getTypeFromSchema = (
 		const ident = getComponentFromRef(schema.$ref);
 		imports.addLocal("model", ident.kebab, ident.upperCamel);
 		return {
-			typeName: required ? ident.upperCamel : `${ident.upperCamel} | undefined`,
+			typeName: ident.upperCamel,
 			print: (name) => {
 				const printMethod = `print${ident.upperCamel}`;
 				imports.addLocal("model", ident.kebab, printMethod);
@@ -485,7 +485,7 @@ const getTypeFromSchema = (
 					}
 
 					return {
-						typeName: required ? "string" : "string | undefined",
+						typeName: "string",
 						validate: (name) => {
 							const options: string[] = [];
 							if (minLength === 0) {
@@ -574,7 +574,7 @@ const getTypeFromSchema = (
 			}
 
 			return {
-				typeName: required ? typeName : `${typeName} | undefined`,
+				typeName,
 				validate: (name, param) => {
 					let validateMethod = `validate${capitalize(type)}`;
 					if (param) {
@@ -613,18 +613,16 @@ const getTypeFromSchema = (
 				`${context}, "additionalProperties"`
 			);
 			return {
-				typeName: required
-					? `Record<string, ${typeName}>`
-					: `Record<string, ${typeName}> | undefined`,
+				typeName: `ReadonlyMap<string, ${typeName}>`,
 				...(print && {
 					print: (name) => {
 						const inner = print("x");
-						imports.addValidate("printRecord");
+						imports.addValidate("printMap");
 						if (required) {
-							return `printRecord(${name}, (x) => ${inner})`;
+							return `printMap(${name}, (x) => ${inner})`;
 						}
 						imports.addValidate("isUndefined");
-						return `isUndefined(${name}) ? undefined : printRecord(${name}, (x) => ${inner})`;
+						return `isUndefined(${name}) ? undefined : printMap(${name}, (x) => ${inner})`;
 					},
 				}),
 				validate: (name, param) => {
@@ -632,12 +630,12 @@ const getTypeFromSchema = (
 						throw `Unexpected object param schema '${context}'`;
 					}
 					const inner = validate("x", false);
-					imports.addValidate("validateRecord");
+					imports.addValidate("validateMap");
 					if (required) {
-						return `validateRecord(${name}, (x) => ${inner}, [${context}])`;
+						return `validateMap(${name}, (x) => ${inner}, [${context}])`;
 					}
 					imports.addValidate("validateOpt");
-					return `validateOpt(${name}, (thing, context) => validateRecord(thing, (x) => ${inner}, context), [${context}])`;
+					return `validateOpt(${name}, (thing, context) => validateMap(thing, (x) => ${inner}, context), [${context}])`;
 				},
 			};
 		}
@@ -661,7 +659,7 @@ const getTypeFromSchema = (
 				`${context}, "items"`
 			);
 			return {
-				typeName: required ? `${typeName}[]` : `${typeName}[] | undefined`,
+				typeName: `ReadonlyArray<${typeName}>`,
 				...(print && {
 					print: (name) => {
 						const inner = print("x");
@@ -791,7 +789,9 @@ const writeApi = (
 				`"${operationId}", "${paramType}", "${paramName}"`
 			);
 			paramNames.push(paramName);
-			paramsWithTypes.push(`${paramName}: ${type.typeName}`);
+			paramsWithTypes.push(
+				`${paramName}: ${type.typeName}${paramRequired ? "" : " | undefined"}`
+			);
 
 			paramLines.append("const ");
 			paramLines.append(paramName);
@@ -999,7 +999,9 @@ const writeClient = (
 			if (paramType === "query") {
 				queryParamNames.push(paramName);
 			}
-			paramsWithTypes.push(`${paramName}: ${type.typeName}`);
+			paramsWithTypes.push(
+				`${paramName}: ${type.typeName}${paramRequired ? "" : " | undefined"}`
+			);
 			addJsDoc(
 				`@param ${paramName}`,
 				paramDescription ||

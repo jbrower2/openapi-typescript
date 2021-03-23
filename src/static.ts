@@ -729,6 +729,11 @@ export const validateDateTimeString = (thing: unknown, context: string[]): DateT
 	);
 };
 
+const addIndex = (context: string[], i: number | string): string[] => {
+	if (!context.length) return [i.toString()];
+	return [...context.slice(0, -1), \`\${context[context.length - 1]}[\${i}]\`];
+};
+
 /**
  * Validates that something is an array.
  *
@@ -745,11 +750,11 @@ export const validateDateTimeString = (thing: unknown, context: string[]): DateT
  */
 export const validateArray = <T>(
 	thing: unknown,
-	mapper: (x: unknown) => T,
+	mapper: (thing: unknown, context: string[]) => T,
 	context: string[]
-): T[] => {
+): ReadonlyArray<T> => {
 	if (Array.isArray(thing)) {
-		return thing.map(mapper);
+		return thing.map((x, i) => mapper(x, addIndex(context, i)));
 	}
 	throw new TypeError(
 		\`Expected '\${context.join(".")}' to be an array, but found: \${thing} (\${typeof thing})\`
@@ -772,13 +777,15 @@ export const validateArray = <T>(
  */
 export const validateParamArray = <T>(
 	thing: unknown,
-	mapper: (x: unknown) => T,
+	mapper: (thing: unknown, context: string[]) => T,
 	context: string[]
-): T[] =>
-	Array.isArray(thing) ? thing.map(mapper) : [mapper(thing)];
+): ReadonlyArray<T> =>
+	Array.isArray(thing)
+		? thing.map((x, i) => mapper(x, addIndex(context, i)))
+		: [mapper(thing, context)];
 
 /**
- * Validates that something is a record.
+ * Validates that something is a map.
  *
  * @param thing
  *   The thing to test.
@@ -787,45 +794,45 @@ export const validateParamArray = <T>(
  * @param context
  *   The context to report in error messages.
  * @return
- *   \`thing\` if it was a record.
+ *   \`thing\` if it was a map.
  * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not a record.
+ *   Throws a \`TypeError\` if \`thing\` was not a map.
  */
-export const validateRecord = <T>(
+export const validateMap = <T>(
 	thing: unknown,
-	valueMapper: (x: unknown) => T,
+	valueMapper: (thing: unknown, context: string[]) => T,
 	context: string[]
-): Record<string, T> => {
+): ReadonlyMap<string, T> => {
 	if (thing && typeof thing === "object") {
-		const record: Record<string, T> = {};
-		for (const [key, value] of Object.entries(thing)) {
-			record[key] = valueMapper(value);
-		}
-		return record;
+		const map = new Map<string, T>();
+		Object.entries(thing).forEach(([key, value]) => {
+			map.set(key, valueMapper(value, addIndex(context, key)));
+		});
+		return map;
 	}
 	throw new TypeError(
-		\`Expected '\${context.join(".")}' to be a record, but found: \${thing} (\${typeof thing})\`
+		\`Expected '\${context.join(".")}' to be a map, but found: \${thing} (\${typeof thing})\`
 	);
 };
 
 /**
- * Converts a record to JSON.
+ * Converts a map to JSON.
  *
- * @param record
- *   The record to convert.
+ * @param map
+ *   The map to convert.
  * @param printValue
  *   The function to convert each object value to JSON.
  * @return
- *   A JSON version of \`record\`.
+ *   A JSON version of \`map\`.
  */
-export const printRecord = <T>(
-	record: Record<string, T>,
+export const printMap = <T>(
+	map: ReadonlyMap<string, T>,
 	printValue: (value: T) => any
 ): any => {
 	const result: any = {};
-	for (const [key, value] of Object.entries(record)) {
+	map.forEach((value, key) => {
 		result[key] = printValue(value);
-	}
+	});
 	return result;
 };
 
