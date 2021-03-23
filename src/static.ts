@@ -550,7 +550,7 @@ export const validateNumberString = (thing: unknown, context: string[]): BigNumb
 	if (typeof thing === "string") {
 		const number = new BigNumber(thing);
 		if (number.isFinite()) {
-			return thing;
+			return number;
 		}
 	}
 	throw new TypeError(
