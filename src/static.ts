@@ -670,16 +670,38 @@ export const validateString = (
 };
 
 /**
- * Validates that something is a valid ISO date.
+ * Validates that something is a valid Date.
  *
  * @param thing
  *   The thing to test.
  * @param context
  *   The context to report in error messages.
  * @return
- *   A \`DateTime\` at midnight UTC if \`thing\` was a valid ISO date.
+ *   A \`DateTime\` at midnight UTC if \`thing\` was a valid Date.
  * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date.
+ *   Throws a \`TypeError\` if \`thing\` was not a valid Date.
+ */
+export const validateDate = (thing: unknown, context: string[]): DateTime => {
+	const dt = DateTime.fromJSDate(validateType(Date, thing, context), { zone: 'America/New_York' });
+	if (!dt.hour && !dt.minute && !dt.second && !dt.millisecond) {
+		return DateTime.utc(dt.year, dt.month, dt.day);
+	}
+	throw new TypeError(
+		\`Expected '\${context.join(".")}' to be a date with no time component, but found: \${dt}\`
+	);
+};
+
+/**
+ * Validates that something is a valid ISO date string.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param context
+ *   The context to report in error messages.
+ * @return
+ *   A \`DateTime\` at midnight UTC if \`thing\` was a valid ISO date string.
+ * @throws {TypeError}
+ *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date string.
  */
 export const validateDateString = (thing: unknown, context: string[]): DateTime => {
 	const s = validateString(thing, context, { minLength: 10, maxLength: 10 });
@@ -693,7 +715,7 @@ export const validateDateString = (thing: unknown, context: string[]): DateTime 
 		);
 	}
 	throw new TypeError(
-		\`Expected '\${context.join(".")}' to be a date, but found: \${s}\`
+		\`Expected '\${context.join(".")}' to be a date string, but found: \${s}\`
 	);
 };
 
@@ -708,6 +730,21 @@ export const validateDateString = (thing: unknown, context: string[]): DateTime 
  *   A \`DateTime\` if \`thing\` was a valid ISO date-time.
  * @throws {TypeError}
  *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date-time.
+ */
+export const validateDateTime = (thing: unknown, context: string[]): DateTime =>
+	DateTime.fromJSDate(validateType(Date, thing, context), { zone: 'utc' });
+
+/**
+ * Validates that something is a valid ISO date-time string.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param context
+ *   The context to report in error messages.
+ * @return
+ *   A \`DateTime\` if \`thing\` was a valid ISO date-time string.
+ * @throws {TypeError}
+ *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date-time string.
  */
 export const validateDateTimeString = (thing: unknown, context: string[]): DateTime => {
 	const s = validateString(thing, context, { minLength: 24, maxLength: 24 });
@@ -725,7 +762,7 @@ export const validateDateTimeString = (thing: unknown, context: string[]): DateT
 		);
 	}
 	throw new TypeError(
-		\`Expected '\${context.join(".")}' to be a date-time, but found: \${s}\`
+		\`Expected '\${context.join(".")}' to be a date-time string, but found: \${s}\`
 	);
 };
 
