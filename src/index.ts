@@ -134,48 +134,66 @@ class StringBuilder {
 class Imports {
 	private imports: {
 		[file: string]: {
+			def?: string;
 			named: Set<string>;
 		};
 	} = {};
 
 	constructor(private folder: "api" | "client" | "model" | undefined) {}
 
-	addGlobal(file: string, namedImport: string) {
-		const { named } =
-			this.imports[file] || (this.imports[file] = { named: new Set() });
-		named.add(namedImport);
+	addGlobal(file: string, name: string, def?: true) {
+		const i = this.imports[file] || (this.imports[file] = { named: new Set() });
+		if (!def) {
+			i.named.add(name);
+		} else if (i.def) {
+			if (i.def !== name) {
+				throw `Default import already specified`;
+			}
+		} else {
+			i.def = name;
+		}
 	}
 
 	addLocal(
 		folder: "api" | "client" | "model" | undefined,
 		file: string,
-		namedImport: string
+		name: string,
+		def?: true
 	) {
 		let relative;
 		if (folder === this.folder) relative = ".";
 		else if (!folder) relative = "..";
 		else if (!this.folder) relative = `./${folder}`;
 		else relative = `../${folder}`;
-		this.addGlobal(`${relative}/${file}`, namedImport);
+		this.addGlobal(`${relative}/${file}`, name, def);
 	}
 
-	addValidate(namedImport: string) {
-		this.addLocal(undefined, "validate", namedImport);
+	addValidate(name: string) {
+		this.addLocal(undefined, "validate", name);
 	}
 
 	toString(): string {
 		const b = new StringBuilder();
 		b.append("\n\n");
-		for (const [file, { named: namedSet }] of Object.entries(
+		for (const [file, { def, named: namedSet }] of Object.entries(
 			this.imports
 		).sort(([a], [b]) => a.localeCompare(b))) {
 			const named = Array.from(namedSet).sort((a, b) => a.localeCompare(b));
-			b.append("import{");
+			b.append("import { ");
+			if (def) {
+				b.append("default as ");
+				b.append(def);
+				if (named.length) {
+					b.append(", ");
+				}
+			}
 			named.forEach((n, i) => {
-				if (i > 0) b.append(",");
+				if (i > 0) {
+					b.append(", ");
+				}
 				b.append(n);
 			});
-			b.append("}from");
+			b.append(" } from ");
 			b.append(JSON.stringify(file));
 			b.append(";");
 		}
@@ -367,7 +385,7 @@ const writeObjectModel = (
 
 		validateBuilder.append(property);
 		validateBuilder.append(": ");
-		validateBuilder.append(validate(`json.${property}`));
+		validateBuilder.append(validate(`json.${property}`, false));
 		validateBuilder.append(",");
 	}
 
@@ -400,7 +418,7 @@ const writeObjectModel = (
 type RuntimeType = {
 	typeName: string;
 	print?: (name: string) => string;
-	validate: (name: string) => string;
+	validate: (name: string, param: boolean) => string;
 };
 
 const getTypeFromSchema = (
@@ -454,6 +472,7 @@ const getTypeFromSchema = (
 	} = schema;
 	switch (type) {
 		case "string": {
+			props.delete("format");
 			switch (format) {
 				case undefined:
 				case "email": {
@@ -469,6 +488,9 @@ const getTypeFromSchema = (
 						typeName: required ? "string" : "string | undefined",
 						validate: (name) => {
 							const options: string[] = [];
+							if (minLength === 0) {
+								throw `Unexpected minLength of 0 in '${context}'`;
+							}
 							if (minLength) {
 								options.push(`minLength: ${minLength}`);
 							}
@@ -497,58 +519,36 @@ const getTypeFromSchema = (
 					};
 				}
 
-				case "date": {
-					props.delete("format");
-					if (props.size) {
-						throw `Unexpected properties of date schema '${context}': ${Array.from(
-							props
-						)}`;
-					}
-
-					return {
-						typeName: "Date",
-						print: (name) => {
-							if (required) {
-								return `${name}.toISOString().substring(0, 10)`;
-							}
-							imports.addValidate("isUndefined");
-							return `isUndefined(${name}) ? undefined : ${name}.toISOString().substring(0, 10)`;
-						},
-						validate: (name) => {
-							imports.addValidate("validateDate");
-							if (required) {
-								return `validateDate(${name}, [${context}])`;
-							}
-							imports.addValidate("validateOpt");
-							return `validateOpt(${name}, validateDate, [${context}])`;
-						},
-					};
-				}
-
+				case "date":
 				case "date-time": {
-					props.delete("format");
 					if (props.size) {
-						throw `Unexpected properties of date-time schema '${context}': ${Array.from(
+						throw `Unexpected properties of ${format} schema '${context}': ${Array.from(
 							props
 						)}`;
 					}
 
+					imports.addGlobal("luxon", "DateTime");
+					const [validateMethod, printMethod] =
+						format === "date"
+							? ["validateDateString", "toISODate"]
+							: ["validateDateTimeString", "toISO"];
+
 					return {
-						typeName: "Date",
+						typeName: "DateTime",
 						print: (name) => {
 							if (required) {
-								return `${name}.toISOString()`;
+								return `${name}.toUTC().${printMethod}()`;
 							}
 							imports.addValidate("isUndefined");
-							return `isUndefined(${name}) ? undefined : ${name}.toISOString()`;
+							return `isUndefined(${name}) ? undefined : ${name}.toUTC().${printMethod}()`;
 						},
 						validate: (name) => {
-							imports.addValidate("validateDateTime");
+							imports.addValidate(validateMethod);
 							if (required) {
-								return `validateDateTime(${name}, [${context}])`;
+								return `${validateMethod}(${name}, [${context}])`;
 							}
 							imports.addValidate("validateOpt");
-							return `validateOpt(${name}, validateDateTime, [${context}])`;
+							return `validateOpt(${name}, ${validateMethod}, [${context}])`;
 						},
 					};
 				}
@@ -567,14 +567,19 @@ const getTypeFromSchema = (
 				)}`;
 			}
 
-			const typeName = type === "integer" ? "number" : type;
+			const typeName =
+				type === "integer" || type === "number" ? "BigNumber" : type;
+			if (typeName === "BigNumber") {
+				imports.addGlobal("bignumber.js", "BigNumber", true);
+			}
+
 			return {
 				typeName: required ? typeName : `${typeName} | undefined`,
-				validate: (name) => {
-					const validateMethod =
-						format === "email"
-							? "validateEmail"
-							: `validate${capitalize(type)}`;
+				validate: (name, param) => {
+					let validateMethod = `validate${capitalize(type)}`;
+					if (param) {
+						validateMethod += "String";
+					}
 					imports.addValidate(validateMethod);
 					if (required) {
 						return `${validateMethod}(${name}, [${context}])`;
@@ -622,8 +627,11 @@ const getTypeFromSchema = (
 						return `isUndefined(${name}) ? undefined : printRecord(${name}, (x) => ${inner})`;
 					},
 				}),
-				validate: (name) => {
-					const inner = validate("x");
+				validate: (name, param) => {
+					if (param) {
+						throw `Unexpected object param schema '${context}'`;
+					}
+					const inner = validate("x", false);
 					imports.addValidate("validateRecord");
 					if (required) {
 						return `validateRecord(${name}, (x) => ${inner}, [${context}])`;
@@ -664,14 +672,15 @@ const getTypeFromSchema = (
 						return `isUndefined(${name}) ? undefined : ${name}.map((x) => ${inner})`;
 					},
 				}),
-				validate: (name) => {
-					const inner = validate("x");
-					imports.addValidate("validateArray");
+				validate: (name, param) => {
+					const validateMethod = param ? "validateParamArray" : "validateArray";
+					const inner = validate("x", false);
+					imports.addValidate(validateMethod);
 					if (required) {
-						return `validateArray(${name}, (x) => ${inner}, [${context}])`;
+						return `${validateMethod}(${name}, (x) => ${inner}, [${context}])`;
 					}
 					imports.addValidate("validateOpt");
-					return `validateOpt(${name}, (thing, context) => validateArray(thing, (x) => ${inner}, context), [${context}])`;
+					return `validateOpt(${name}, (thing, context) => ${validateMethod}(thing, (x) => ${inner}, context), [${context}])`;
 				},
 			};
 		}
@@ -753,7 +762,7 @@ const writeApi = (
 				paramsWithTypes.push(`body: ${requestType.typeName}`);
 
 				paramLines.append("const body = ");
-				paramLines.append(requestType.validate("req.body"));
+				paramLines.append(requestType.validate("req.body", false));
 				paramLines.append(";");
 
 				addJsDoc("@param body", requestBody.description || "Request body.");
@@ -789,7 +798,8 @@ const writeApi = (
 			paramLines.append(" = ");
 			paramLines.append(
 				type.validate(
-					`req.${paramType === "path" ? "params" : paramType}.${paramName}`
+					`req.${paramType === "path" ? "params" : paramType}.${paramName}`,
+					true
 				)
 			);
 			paramLines.append(";");
@@ -1072,7 +1082,7 @@ const writeClient = (
 		}
 		if (returnType) {
 			b.append("(json: any) => ");
-			b.append(returnType.validate("json"));
+			b.append(returnType.validate("json", false));
 			b.append(",");
 		}
 		b.append(");}");

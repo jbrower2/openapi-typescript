@@ -1,6 +1,7 @@
 // #region base api
 export const baseApi = `
 import { Response } from "express";
+import JSONbig from 'json-bigint';
 
 /** Exception type that holds a HTTP status and body. */
 export class ApiError extends Error {
@@ -19,7 +20,7 @@ export class ApiError extends Error {
 	constructor(
 		public status: number,
 		public body: any,
-		message: string = JSON.stringify(body)
+		message: string = JSONbig.stringify(body)
 	) {
 		super(message);
 	}
@@ -38,15 +39,15 @@ export abstract class BaseApi {
 	async handleResponse<T>(res: Response, data: Promise<T>): Promise<void> {
 		let body: string;
 		try {
-			body = JSON.stringify(await data);
+			body = JSONbig.stringify(await data);
 		} catch (error) {
 			console.error(error);
 			if (error instanceof ApiError) {
 				res.status(error.status);
-				body = JSON.stringify(error.body);
+				body = JSONbig.stringify(error.body);
 			} else {
 				res.status(500);
-				body = JSON.stringify(error instanceof Error ? error.message : error);
+				body = JSONbig.stringify(error instanceof Error ? error.message : error);
 			}
 		}
 		if (body) {
@@ -61,6 +62,8 @@ export abstract class BaseApi {
 
 // #region base client
 export const baseClient = `
+import JSONbig from 'json-bigint';
+
 /** Enum of the valid HTTP methods. */
 export type HttpMethod =
 	| "GET"
@@ -298,7 +301,7 @@ export abstract class BaseClient {
 		convertResponse?: (json: any) => O
 	): Promise<O> {
 		// coerce empty string to no response
-		const bodyString = JSON.stringify(body) || undefined;
+		const bodyString = JSONbig.stringify(body) || undefined;
 
 		// combine base and override configuration options
 		const config: ClientConfig = {
@@ -338,7 +341,9 @@ export abstract class BaseClient {
 
 // #region validate
 export const validate = `
+import BigNumber from "bignumber.js";
 import EmailValidator from "email-validator";
+import { DateTime } from "luxon";
 
 /**
  * Determines if something is \`undefined\` or \`null\`.
@@ -448,6 +453,27 @@ export const validateBoolean = (
 	if (typeof thing === "boolean") {
 		return thing;
 	}
+	throw new TypeError(
+		\`Expected '\${context.join(".")}' to be a boolean, but found: \${thing} (\${typeof thing})\`
+	);
+};
+
+/**
+ * Validates that something is \`"true"\` or \`"false"\`.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param context
+ *   The context to report in error messages.
+ * @return
+ *   \`thing\` if it was \`"true"\` or \`"false"\`.
+ * @throws {TypeError}
+ *   Throws a \`TypeError\` if \`thing\` was not \`"true"\` or \`"false"\`.
+ */
+export const validateBooleanString = (
+	thing: unknown,
+	context: string[]
+): boolean => {
 	if (thing === "true") {
 		return true;
 	}
@@ -455,7 +481,7 @@ export const validateBoolean = (
 		return false;
 	}
 	throw new TypeError(
-		\`Expected '\${context.join(".")}' to be a boolean, but found: \${thing} (\${typeof thing})\`
+		\`Expected '\${context.join(".")}' to be "true" or "false", but found: \${thing} (\${typeof thing})\`
 	);
 };
 
@@ -488,24 +514,20 @@ export const validateBooleanYN = (
 };
 
 /**
- * Validates that something is a number.
+ * Validates that something is a \`BigNumber\`.
  *
  * @param thing
  *   The thing to test.
  * @param context
  *   The context to report in error messages.
  * @return
- *   \`thing\` if it was a number.
+ *   \`thing\` if it was a \`BigNumber\`.
  * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not a number.
+ *   Throws a \`TypeError\` if \`thing\` was not a \`BigNumber\`.
  */
-export const validateNumber = (thing: unknown, context: string[]): number => {
-	if (typeof thing === "number") {
+export const validateNumber = (thing: unknown, context: string[]): BigNumber => {
+	if (thing instanceof BigNumber && thing.isFinite()) {
 		return thing;
-	}
-	const number = Number(thing);
-	if (!Number.isNaN(number)) {
-		return number;
 	}
 	throw new TypeError(
 		\`Expected '\${context.join(".")}' to be a number, but found: \${thing} (\${typeof thing})\`
@@ -513,24 +535,70 @@ export const validateNumber = (thing: unknown, context: string[]): number => {
 };
 
 /**
- * Validates that something is an integer.
+ * Validates that something is a number string.
  *
  * @param thing
  *   The thing to test.
  * @param context
  *   The context to report in error messages.
  * @return
- *   \`thing\` if it was an integer.
+ *   \`thing\` if it was a number string.
  * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not an integer.
+ *   Throws a \`TypeError\` if \`thing\` was not a number string.
  */
-export const validateInteger = (thing: unknown, context: string[]): number => {
+export const validateNumberString = (thing: unknown, context: string[]): BigNumber => {
+	if (typeof thing === "string") {
+		const number = new BigNumber(thing);
+		if (number.isFinite()) {
+			return thing;
+		}
+	}
+	throw new TypeError(
+		\`Expected '\${context.join(".")}' to be a number string, but found: \${thing} (\${typeof thing})\`
+	);
+};
+
+/**
+ * Validates that something is an integer \`BigNumber\`.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param context
+ *   The context to report in error messages.
+ * @return
+ *   \`thing\` if it was an integer \`BigNumber\`.
+ * @throws {TypeError}
+ *   Throws a \`TypeError\` if \`thing\` was not an integer \`BigNumber\`.
+ */
+export const validateInteger = (thing: unknown, context: string[]): BigNumber => {
 	const number = validateNumber(thing, context);
-	if (Number.isInteger(number)) {
+	if (number.isInteger()) {
 		return number;
 	}
 	throw new TypeError(
 		\`Expected '\${context.join(".")}' to be an integer, but found: \${thing} (\${typeof thing})\`
+	);
+};
+
+/**
+ * Validates that something is an integer string.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param context
+ *   The context to report in error messages.
+ * @return
+ *   \`thing\` if it was an integer string.
+ * @throws {TypeError}
+ *   Throws a \`TypeError\` if \`thing\` was not an integer string.
+ */
+export const validateIntegerString = (thing: unknown, context: string[]): BigNumber => {
+	const number = validateNumberString(thing, context);
+	if (number.isInteger()) {
+		return number;
+	}
+	throw new TypeError(
+		\`Expected '\${context.join(".")}' to be an integer string, but found: \${thing} (\${typeof thing})\`
 	);
 };
 
@@ -609,20 +677,20 @@ export const validateString = (
  * @param context
  *   The context to report in error messages.
  * @return
- *   A \`Date\` at midnight UTC if \`thing\` was a valid ISO date.
+ *   A \`DateTime\` at midnight UTC if \`thing\` was a valid ISO date.
  * @throws {TypeError}
  *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date.
  */
-export const validateDate = (thing: unknown, context: string[]): Date => {
+export const validateDateString = (thing: unknown, context: string[]): DateTime => {
 	const s = validateString(thing, context, { minLength: 10, maxLength: 10 });
 	const m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(s);
 	if (m) {
 		const [, year, month, day] = m;
-		return new Date(Date.UTC(
-			parseInt(year, 10) - 1970,
-			parseInt(month, 10) - 1,
+		return DateTime.utc(
+			parseInt(year, 10),
+			parseInt(month, 10),
 			parseInt(day, 10),
-		));
+		);
 	}
 	throw new TypeError(
 		\`Expected '\${context.join(".")}' to be a date, but found: \${s}\`
@@ -637,24 +705,24 @@ export const validateDate = (thing: unknown, context: string[]): Date => {
  * @param context
  *   The context to report in error messages.
  * @return
- *   A \`Date\` if \`thing\` was a valid ISO date-time.
+ *   A \`DateTime\` if \`thing\` was a valid ISO date-time.
  * @throws {TypeError}
  *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date-time.
  */
-export const validateDateTime = (thing: unknown, context: string[]): Date => {
+export const validateDateTimeString = (thing: unknown, context: string[]): DateTime => {
 	const s = validateString(thing, context, { minLength: 24, maxLength: 24 });
 	const m = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})Z$/.exec(s);
 	if (m) {
 		const [, year, month, day, hour, minute, second, millisecond] = m;
-		return new Date(Date.UTC(
-			parseInt(year, 10) - 1970,
-			parseInt(month, 10) - 1,
+		return DateTime.utc(
+			parseInt(year, 10),
+			parseInt(month, 10),
 			parseInt(day, 10),
 			parseInt(hour, 10),
 			parseInt(minute, 10),
 			parseInt(second, 10),
 			parseInt(millisecond, 10),
-		));
+		);
 	}
 	throw new TypeError(
 		\`Expected '\${context.join(".")}' to be a date-time, but found: \${s}\`
@@ -687,6 +755,27 @@ export const validateArray = <T>(
 		\`Expected '\${context.join(".")}' to be an array, but found: \${thing} (\${typeof thing})\`
 	);
 };
+
+/**
+ * Validates that something is an array.
+ *
+ * @param thing
+ *   The thing to test.
+ * @param mapper
+ *   The function to apply to each array item.
+ * @param context
+ *   The context to report in error messages.
+ * @return
+ *   \`thing\` if it was an array.
+ * @throws {TypeError}
+ *   Throws a \`TypeError\` if \`thing\` was not an array.
+ */
+export const validateParamArray = <T>(
+	thing: unknown,
+	mapper: (x: unknown) => T,
+	context: string[]
+): T[] =>
+	Array.isArray(thing) ? thing.map(mapper) : [mapper(thing)];
 
 /**
  * Validates that something is a record.
