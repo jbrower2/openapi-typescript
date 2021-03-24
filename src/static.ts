@@ -692,38 +692,44 @@ export const validateString = (
 };
 
 /**
- * Validates that something is a valid Date.
+ * Validates that something is a valid Oracle date string with no time component.
  *
  * @param thing
  *   The thing to test.
  * @param context
  *   The context to report in error messages.
  * @return
- *   A \`DateTime\` at midnight UTC if \`thing\` was a valid Date.
+ *   A \`DateTime\` at midnight UTC if \`thing\` was a valid Oracle date string with no time component.
  * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not a valid Date.
+ *   Throws a \`TypeError\` if \`thing\` was not a valid Oracle date string with no time component.
  */
-export const validateDate = (thing: unknown, context: string[]): DateTime => {
-	const dt = DateTime.fromJSDate(validateType(Date, thing, context), { zone: 'America/New_York' });
-	if (!dt.hour && !dt.minute && !dt.second && !dt.millisecond) {
-		return DateTime.utc(dt.year, dt.month, dt.day);
+export const validateOracleDateString = (thing: unknown, context: string[]): DateTime => {
+	const s = validateString(thing, context, { minLength: 19, maxLength: 19 });
+	const m = /^(\\d{4})-(\\d{2})-(\\d{2})T00:00:00$/.exec(s);
+	if (m) {
+		const [, year, month, day] = m;
+		return DateTime.utc(
+			parseInt(year, 10),
+			parseInt(month, 10),
+			parseInt(day, 10),
+		);
 	}
 	throw new TypeError(
-		\`Expected '\${context.join(".")}' to be a date with no time component, but found: \${dt}\`
+		\`Expected '\${context.join(".")}' to be a date string with no time component, but found: \${s}\`
 	);
 };
 
 /**
- * Validates that something is a valid ISO date string.
+ * Validates that something is a valid ISO date string with no time component.
  *
  * @param thing
  *   The thing to test.
  * @param context
  *   The context to report in error messages.
  * @return
- *   A \`DateTime\` at midnight UTC if \`thing\` was a valid ISO date string.
+ *   A \`DateTime\` at midnight UTC if \`thing\` was a valid ISO date string with no time component.
  * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date string.
+ *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date string with no time component.
  */
 export const validateDateString = (thing: unknown, context: string[]): DateTime => {
 	const s = validateString(thing, context, { minLength: 10, maxLength: 10 });
@@ -737,24 +743,41 @@ export const validateDateString = (thing: unknown, context: string[]): DateTime 
 		);
 	}
 	throw new TypeError(
-		\`Expected '\${context.join(".")}' to be a date string, but found: \${s}\`
+		\`Expected '\${context.join(".")}' to be a date string with no time component, but found: \${s}\`
 	);
 };
 
 /**
- * Validates that something is a valid ISO date-time.
+ * Validates that something is a valid Oracle date-time string.
  *
  * @param thing
  *   The thing to test.
  * @param context
  *   The context to report in error messages.
  * @return
- *   A \`DateTime\` if \`thing\` was a valid ISO date-time.
+ *   A \`DateTime\` if \`thing\` was a valid Oracle date-time string.
  * @throws {TypeError}
- *   Throws a \`TypeError\` if \`thing\` was not a valid ISO date-time.
+ *   Throws a \`TypeError\` if \`thing\` was not a valid Oracle date-time string.
  */
-export const validateDateTime = (thing: unknown, context: string[]): DateTime =>
-	DateTime.fromJSDate(validateType(Date, thing, context), { zone: 'utc' });
+export const validateOracleDateTimeString = (thing: unknown, context: string[]): DateTime => {
+	const s = validateString(thing, context, { minLength: 19, maxLength: 19 });
+	const m = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})$/.exec(s);
+	if (m) {
+		const [, year, month, day, hour, minute, second] = m;
+		return DateTime.fromObject({
+			year: parseInt(year, 10),
+			month: parseInt(month, 10),
+			day: parseInt(day, 10),
+			hour: parseInt(hour, 10),
+			minute: parseInt(minute, 10),
+			second: parseInt(second, 10),
+			zone: 'America/New_York',
+		}).toUTC();
+	}
+	throw new TypeError(
+		\`Expected '\${context.join(".")}' to be a date-time string, but found: \${s}\`
+	);
+};
 
 /**
  * Validates that something is a valid ISO date-time string.

@@ -1,13 +1,13 @@
 {
 	"name": "@jbrower/openapi-typescript",
-	"version": "1.1.15",
+	"version": "1.1.17",
 	"description": "Tool for generating TypeScript APIs/clients from OpenAPI spec files.",
 	"main": "dist/index.js",
 	"bin": "cli.js",
 	"scripts": {
 		"build": "tsc",
 		"prestart": "npm run build",
-		"start": "node --trace-uncaught .",
+		"start": "node --enable-source-maps --trace-uncaught .",
 		"test": "echo \"Error: no test specified\" && exit 1",
 		"prepub": "npm run build",
 		"pub": "npm publish --access public"
