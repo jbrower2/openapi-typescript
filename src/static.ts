@@ -441,17 +441,24 @@ export const validateType = <T>(
  *   The thing to test.
  * @param context
  *   The context to report in error messages.
+ * @param defaultValue
+ *   The value to return when \`thing\` is \`undefined\` or \`null\`.
  * @return
- *   \`thing\` if it was a boolean.
+ *   * \`thing\` if it was a boolean.
+ *   * \`defaultValue\` if \`thing\` was \`undefined\` or \`null\`.
  * @throws {TypeError}
  *   Throws a \`TypeError\` if \`thing\` was not a boolean.
  */
 export const validateBoolean = (
 	thing: unknown,
-	context: string[]
+	context: string[],
+	defaultValue?: boolean
 ): boolean => {
 	if (typeof thing === "boolean") {
 		return thing;
+	}
+	if (isUndefined(thing) && defaultValue !== undefined) {
+		return defaultValue;
 	}
 	throw new TypeError(
 		\`Expected '\${context.join(".")}' to be a boolean, but found: \${thing} (\${typeof thing})\`
@@ -465,20 +472,28 @@ export const validateBoolean = (
  *   The thing to test.
  * @param context
  *   The context to report in error messages.
+ * @param defaultValue
+ *   The value to return when \`thing\` is \`undefined\` or \`null\`.
  * @return
- *   \`thing\` if it was \`"true"\` or \`"false"\`.
+ *   * \`true\` if \`thing\` was \`"true"\`.
+ *   * \`false\` if \`thing\` was \`"false"\`.
+ *   * \`defaultValue\` if \`thing\` was \`undefined\` or \`null\`.
  * @throws {TypeError}
  *   Throws a \`TypeError\` if \`thing\` was not \`"true"\` or \`"false"\`.
  */
 export const validateBooleanString = (
 	thing: unknown,
-	context: string[]
+	context: string[],
+	defaultValue?: boolean
 ): boolean => {
 	if (thing === "true") {
 		return true;
 	}
 	if (thing === "false") {
 		return false;
+	}
+	if (isUndefined(thing) && defaultValue !== undefined) {
+		return defaultValue;
 	}
 	throw new TypeError(
 		\`Expected '\${context.join(".")}' to be "true" or "false", but found: \${thing} (\${typeof thing})\`
@@ -492,21 +507,28 @@ export const validateBooleanString = (
  *   The thing to test.
  * @param context
  *   The context to report in error messages.
+ * @param defaultValue
+ *   The value to return when \`thing\` is \`undefined\` or \`null\`.
  * @return
  *   * \`true\` if \`thing\` was \`"Y"\`.
  *   * \`false\` if \`thing\` was \`"N"\`.
+ *   * \`defaultValue\` if \`thing\` was \`undefined\` or \`null\`.
  * @throws {TypeError}
  *   Throws a \`TypeError\` if \`thing\` was not \`"Y"\` or \`"N"\`.
  */
 export const validateBooleanYN = (
 	thing: unknown,
-	context: string[]
+	context: string[],
+	defaultValue?: boolean
 ): boolean => {
 	if (thing === "Y") {
 		return true;
 	}
 	if (thing === "N") {
 		return false;
+	}
+	if (isUndefined(thing) && defaultValue !== undefined) {
+		return defaultValue;
 	}
 	throw new TypeError(
 		\`Expected '\${context.join(".")}' to be "Y" or "N", but found: \${thing} (\${typeof thing})\`
