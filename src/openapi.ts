@@ -1,4 +1,4 @@
-type OpenAPI = {
+export type OpenAPI = {
 	openapi: string;
 	info: OpenAPIInfo;
 	servers?: OpenAPIServer[];
@@ -9,7 +9,7 @@ type OpenAPI = {
 	externalDocs?: OpenAPIExternalDocumentation;
 };
 
-type OpenAPIInfo = {
+export type OpenAPIInfo = {
 	title: string;
 	description?: string;
 	termsOfService?: string;
@@ -18,30 +18,30 @@ type OpenAPIInfo = {
 	version: string;
 };
 
-type OpenAPIContact = {
+export type OpenAPIContact = {
 	name?: string;
 	url?: string;
 	email?: string;
 };
 
-type OpenAPILicense = {
+export type OpenAPILicense = {
 	name: string;
 	url?: string;
 };
 
-type OpenAPIServer = {
+export type OpenAPIServer = {
 	url: string;
 	description?: string;
 	variables?: Record<string, OpenAPIServerVariable>;
 };
 
-type OpenAPIServerVariable = {
+export type OpenAPIServerVariable = {
 	enum?: string[];
 	default: string;
 	description?: string;
 };
 
-type OpenAPIComponents = {
+export type OpenAPIComponents = {
 	schemas?: Record<string, OpenAPISchema | OpenAPIReference>;
 	responses?: Record<string, OpenAPIResponse | OpenAPIReference>;
 	parameters?: Record<string, OpenAPIParameter | OpenAPIReference>;
@@ -53,7 +53,7 @@ type OpenAPIComponents = {
 	callbacks?: Record<string, OpenAPICallback | OpenAPIReference>;
 };
 
-type OpenAPIPathItem = {
+export type OpenAPIPathItem = {
 	$ref?: string;
 	summary?: string;
 	description?: string;
@@ -69,7 +69,7 @@ type OpenAPIPathItem = {
 	parameters?: (OpenAPIParameter | OpenAPIReference)[];
 };
 
-type OpenAPIOperation = {
+export type OpenAPIOperation = {
 	tags?: string[];
 	summary?: string;
 	description?: string;
@@ -84,30 +84,30 @@ type OpenAPIOperation = {
 	servers?: OpenAPIServer[];
 };
 
-type OpenAPIExternalDocumentation = {
+export type OpenAPIExternalDocumentation = {
 	description?: string;
 	url: string;
 };
 
-type OpenAPIParameter = OpenAPIHeader & {
+export type OpenAPIParameter = OpenAPIHeader & {
 	name: string;
 	in: "query" | "header" | "path" | "cookie";
 };
 
-type OpenAPIRequestBody = {
+export type OpenAPIRequestBody = {
 	description?: string;
 	content: Record<string, OpenAPIMediaType>;
 	required?: boolean;
 };
 
-type OpenAPIMediaType = {
+export type OpenAPIMediaType = {
 	schema?: OpenAPISchema | OpenAPIReference;
 	example?: any;
 	examples?: Record<string, OpenAPIExample | OpenAPIReference>;
 	encoding?: Record<string, OpenAPIEncoding>;
 };
 
-type OpenAPIEncoding = {
+export type OpenAPIEncoding = {
 	contentType?: string;
 	headers?: Record<string, OpenAPIHeader | OpenAPIReference>;
 	style?: string;
@@ -115,30 +115,30 @@ type OpenAPIEncoding = {
 	allowReserved?: boolean;
 };
 
-type OpenAPIResponses = Record<
+export type OpenAPIResponses = Record<
 	HttpStatusCode,
 	OpenAPIResponse | OpenAPIReference
 > & {
 	default?: OpenAPIResponse | OpenAPIReference;
 };
 
-type OpenAPIResponse = {
+export type OpenAPIResponse = {
 	description: string;
 	headers?: Record<string, OpenAPIHeader | OpenAPIReference>;
 	content?: Record<string, OpenAPIMediaType>;
 	links?: Record<string, OpenAPILink | OpenAPIReference>;
 };
 
-type OpenAPICallback = Record<string, OpenAPIPathItem>;
+export type OpenAPICallback = Record<string, OpenAPIPathItem>;
 
-type OpenAPIExample = {
+export type OpenAPIExample = {
 	summary?: string;
 	description?: string;
 	value?: any;
 	externalValue?: string;
 };
 
-type OpenAPILink = {
+export type OpenAPILink = {
 	operationRef?: string;
 	operationId?: string;
 	parameters?: Record<string, any>;
@@ -147,7 +147,7 @@ type OpenAPILink = {
 	server?: OpenAPIServer;
 };
 
-type OpenAPIHeader = {
+export type OpenAPIHeader = {
 	description?: string;
 	required?: boolean;
 	deprecated?: boolean;
@@ -161,17 +161,17 @@ type OpenAPIHeader = {
 	content?: Record<string, OpenAPIMediaType>;
 };
 
-type OpenAPITag = {
+export type OpenAPITag = {
 	name: string;
 	description?: string;
 	externalDocs?: OpenAPIExternalDocumentation;
 };
 
-type OpenAPIReference = {
+export type OpenAPIReference = {
 	$ref: string;
 };
 
-type OpenAPISchema = {
+export type OpenAPISchema = {
 	title?: string;
 	multipleOf?: number;
 	maximum?: number;
@@ -219,7 +219,8 @@ type OpenAPISchema = {
 		| "ipv6"
 		| "password"
 		| "uri"
-		| "uriref";
+		| "uriref"
+		| "uuid";
 	default?: any;
 	nullable?: boolean;
 	discriminator?: OpenAPIDiscriminator;
@@ -231,12 +232,12 @@ type OpenAPISchema = {
 	deprecated?: boolean;
 };
 
-type OpenAPIDiscriminator = {
+export type OpenAPIDiscriminator = {
 	propertyName: string;
 	mapping?: Record<string, string>;
 };
 
-type OpenAPIXML = {
+export type OpenAPIXML = {
 	name?: string;
 	namespace?: string;
 	prefix?: string;
@@ -244,39 +245,39 @@ type OpenAPIXML = {
 	wrapped?: boolean;
 };
 
-type OpenAPISecuritySchemeApiKey = {
+export type OpenAPISecuritySchemeApiKey = {
 	type: "apiKey";
 	description?: string;
 	name: string;
 	in: "query" | "header" | "cookie";
 };
 
-type OpenAPISecuritySchemeHttp = {
+export type OpenAPISecuritySchemeHttp = {
 	type: "http";
 	description?: string;
 	scheme: string;
 	bearerFormat?: string;
 };
 
-type OpenAPISecuritySchemeOAuth2 = {
+export type OpenAPISecuritySchemeOAuth2 = {
 	type: "oauth2";
 	description?: string;
 	flows: OpenAPIOAuthFlows;
 };
 
-type OpenAPISecuritySchemeOpenIdConnect = {
+export type OpenAPISecuritySchemeOpenIdConnect = {
 	type: "openIdConnect";
 	description?: string;
 	openIdConnectUrl: string;
 };
 
-type OpenAPISecurityScheme =
+export type OpenAPISecurityScheme =
 	| OpenAPISecuritySchemeApiKey
 	| OpenAPISecuritySchemeHttp
 	| OpenAPISecuritySchemeOAuth2
 	| OpenAPISecuritySchemeOpenIdConnect;
 
-type OpenAPIOAuthFlows = {
+export type OpenAPIOAuthFlows = {
 	implicit?: OpenAPIOAuthFlow & OpenAPIOAuthFlowAuthorizationUrl;
 	password?: OpenAPIOAuthFlow & OpenAPIOAuthFlowTokenUrl;
 	clientCredentials?: OpenAPIOAuthFlow & OpenAPIOAuthFlowTokenUrl;
@@ -285,22 +286,22 @@ type OpenAPIOAuthFlows = {
 		OpenAPIOAuthFlowTokenUrl;
 };
 
-type OpenAPIOAuthFlowAuthorizationUrl = {
+export type OpenAPIOAuthFlowAuthorizationUrl = {
 	authorizationUrl: string;
 };
 
-type OpenAPIOAuthFlowTokenUrl = {
+export type OpenAPIOAuthFlowTokenUrl = {
 	tokenUrl: string;
 };
 
-type OpenAPIOAuthFlow = {
+export type OpenAPIOAuthFlow = {
 	refreshUrl?: string;
 	scopes: Record<string, string>;
 };
 
-type OpenAPISecurityRequirement = Record<string, string>;
+export type OpenAPISecurityRequirement = Record<string, string>;
 
-type HttpStatusCode =
+export type HttpStatusCode =
 	| "1XX"
 	| "100"
 	| "101"
@@ -375,3 +376,7 @@ type HttpStatusCode =
 	| "509"
 	| "510"
 	| "511";
+
+export function isReference(x: any): x is OpenAPIReference {
+	return x && "$ref" in x;
+}

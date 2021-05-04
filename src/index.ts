@@ -1,3 +1,23 @@
+import fs from "fs";
+import rimraf from "rimraf";
+import YAML from "yaml";
+import path from "path";
+import prettier from "prettier";
+
+import { Identifier } from "./identifier";
+import { Imports } from "./imports";
+import {
+	isReference,
+	OpenAPI,
+	OpenAPIMediaType,
+	OpenAPIOperation,
+	OpenAPISchema,
+	OpenAPITag,
+} from "./openapi";
+import { enumTypes, objectTypes, getRuntimeType } from "./runtime-type";
+import { baseApi, baseClient, typeUtils } from "./static";
+import { StringBuilder } from "./string-builder";
+
 if (process.argv.length !== 5) {
 	console.error(
 		"Usage: npx openapi-typescript /path/to/openapi.yaml (api | client) /output/directory"
@@ -7,7 +27,6 @@ if (process.argv.length !== 5) {
 
 const [, , specFile, mode, outputDir] = process.argv;
 
-import fs from "fs";
 if (!fs.existsSync(specFile)) {
 	console.error(`Spec file ${specFile} did not exist`);
 	process.exit(1);
@@ -18,13 +37,11 @@ if (mode !== "api" && mode !== "client") {
 	process.exit(1);
 }
 
-import rimraf from "rimraf";
 rimraf.sync(outputDir);
 fs.mkdirSync(outputDir, { recursive: true });
 
 const specString = fs.readFileSync(specFile, "utf8");
 
-import YAML from "yaml";
 const { components, paths, tags = [] }: OpenAPI = YAML.parse(specString);
 if (!components) throw "Expected components to be defined!";
 const { schemas, securitySchemes } = components;
@@ -35,10 +52,7 @@ type UrlPart = {
 	value: string;
 };
 
-type Url = string | { original: string; parts: UrlPart[] };
-
-const urlToString = (url: Url): string =>
-	typeof url === "string" ? url : url.original;
+type Url = { original: string; parts: UrlPart[] };
 
 type OperationExtended = OpenAPIOperation & {
 	method: HttpMethod;
@@ -82,9 +96,7 @@ for (const [urlString, methods] of Object.entries(paths)) {
 	const parts: UrlPart[] = [];
 	let urlRest = urlString;
 	let match: RegExpExecArray | null;
-	let anyParams = false;
 	while ((match = /^(.*?)\{(\w+)\}/.exec(urlRest)) !== null) {
-		anyParams = true;
 		const {
 			0: { length },
 			1: start,
@@ -99,7 +111,7 @@ for (const [urlString, methods] of Object.entries(paths)) {
 	if (urlRest) {
 		parts.push({ type: "literal", value: urlRest });
 	}
-	const url: Url = anyParams ? { original: urlString, parts } : urlString;
+	const url: Url = { original: urlString, parts };
 	const entries = Object.entries(methods).map<[string, OpenAPIOperation]>(
 		([k, v]) => [k.toUpperCase(), v as OpenAPIOperation]
 	);
@@ -115,140 +127,6 @@ for (const [urlString, methods] of Object.entries(paths)) {
 		tag.operations.push({ ...operation, url, method });
 	}
 }
-
-class StringBuilder {
-	private parts: (string | StringBuilder | Imports)[] = [];
-
-	append(part: string | number | boolean | StringBuilder | Imports): this {
-		if (typeof part === "number" || typeof part === "boolean")
-			this.parts.push(part.toString());
-		else this.parts.push(part);
-		return this;
-	}
-
-	toString(): string {
-		return this.parts.join("");
-	}
-}
-
-class Imports {
-	private imports: {
-		[file: string]: {
-			def?: string;
-			named: Set<string>;
-		};
-	} = {};
-
-	constructor(private folder: "api" | "client" | "model" | undefined) {}
-
-	addGlobal(file: string, name: string, def?: true) {
-		const i = this.imports[file] || (this.imports[file] = { named: new Set() });
-		if (!def) {
-			i.named.add(name);
-		} else if (i.def) {
-			if (i.def !== name) {
-				throw `Default import already specified`;
-			}
-		} else {
-			i.def = name;
-		}
-	}
-
-	addLocal(
-		folder: "api" | "client" | "model" | undefined,
-		file: string,
-		name: string,
-		def?: true
-	) {
-		let relative;
-		if (folder === this.folder) relative = ".";
-		else if (!folder) relative = "..";
-		else if (!this.folder) relative = `./${folder}`;
-		else relative = `../${folder}`;
-		this.addGlobal(`${relative}/${file}`, name, def);
-	}
-
-	addValidate(name: string) {
-		this.addLocal(undefined, "validate", name);
-	}
-
-	toString(): string {
-		const b = new StringBuilder();
-		b.append("\n\n");
-		for (const [file, { def, named: namedSet }] of Object.entries(
-			this.imports
-		).sort(([a], [b]) => a.localeCompare(b))) {
-			const named = Array.from(namedSet).sort((a, b) => a.localeCompare(b));
-			b.append("import { ");
-			if (def) {
-				b.append("default as ");
-				b.append(def);
-				if (named.length) {
-					b.append(", ");
-				}
-			}
-			named.forEach((n, i) => {
-				if (i > 0) {
-					b.append(", ");
-				}
-				b.append(n);
-			});
-			b.append(" } from ");
-			b.append(JSON.stringify(file));
-			b.append(";");
-		}
-		b.append("\n\n");
-		return b.toString();
-	}
-}
-
-const capitalize = (s: string) => `${s[0].toUpperCase()}${s.substring(1)}`;
-const uncapitalize = (s: string) => `${s[0].toLowerCase()}${s.substring(1)}`;
-
-class Identifier {
-	public readonly lowerCamel: string;
-	public readonly upperCamel: string;
-	public readonly display: string;
-	public readonly kebab: string;
-
-	private constructor(words: string[]) {
-		let lowerCamel = "";
-		let upperCamel = "";
-		let display = "";
-		let kebab = "";
-		words.forEach((word, i) => {
-			const lower = word.toLowerCase();
-			const capital = capitalize(lower);
-			if (i > 0) {
-				display += " ";
-				kebab += "-";
-				lowerCamel += capital;
-			} else {
-				lowerCamel += lower;
-			}
-			upperCamel += capital;
-			display += word;
-			kebab += lower;
-		});
-		this.lowerCamel = lowerCamel;
-		this.upperCamel = upperCamel;
-		this.display = display;
-		this.kebab = kebab;
-	}
-
-	static readonly fromCamel = (s: string): Identifier =>
-		new Identifier(s.trim().split(/(?<=[^A-Z])(?=[A-Z])/));
-
-	static readonly fromWords = (s: string): Identifier =>
-		new Identifier(s.trim().split(/\s+/));
-}
-
-const getComponentFromRef = (ref: string) => {
-	const match = /^#\/components\/schemas\/(\w+)$/.exec(ref);
-	if (!match)
-		throw `Expected ref to be of form /^#\\/components\\/schemas\\/(\\w+)$/, but found: ${ref}`;
-	return Identifier.fromCamel(match[1]);
-};
 
 const splitLines = (s: string | undefined) =>
 	s ? s.trim().split(/\r?\n/) : [];
@@ -295,7 +173,6 @@ const writeEnumModel = (
 ): string => {
 	if (!enumValues) throw `Expected enum values in ${enumName}`;
 	const b = new StringBuilder();
-	b.append('import { validateOneOf } from "../validate";\n\n');
 	appendMarkdownAsComment(b, ...splitLines(description));
 	b.append("export type ");
 	b.append(enumName);
@@ -315,23 +192,7 @@ const writeEnumModel = (
 		if (i > 0) b.append(",");
 		b.append(JSON.stringify(enumValue));
 	});
-	b.append("];\n\n/** Convert from ");
-	b.append(enumName);
-	b.append(" to JSON. */\nexport const print");
-	b.append(enumName);
-	b.append(" = (value: ");
-	b.append(enumName);
-	b.append("): any => value;\n\n/** Convert from JSON to ");
-	b.append(enumName);
-	b.append(". */\nexport const validate");
-	b.append(enumName);
-	b.append(" = (json: any, context: string[] = []): ");
-	b.append(enumName);
-	b.append(" => validateOneOf(json, values");
-	b.append(enumName);
-	b.append(', [...context, "');
-	b.append(enumName);
-	b.append('"]);');
+	b.append("];");
 	return b.toString();
 };
 
@@ -342,7 +203,8 @@ const writeObjectModel = (
 	if (!objectSchema.properties) throw `Expected properties in ${objectName}`;
 	const b = new StringBuilder();
 	const imports = new Imports("model");
-	imports.addValidate("validateObject");
+	imports.addValidate("testModelObject");
+	imports.addValidate("printModelObject");
 
 	const propertyBuilder = new StringBuilder();
 	const printBuilder = new StringBuilder();
@@ -355,11 +217,10 @@ const writeObjectModel = (
 			objectSchema.required !== undefined &&
 			objectSchema.required.includes(property);
 
-		const { typeName, print, validate } = getTypeFromSchema(
-			imports,
+		const { typeName, fromJson, toJson } = getRuntimeType(
 			propertySchema,
-			required,
-			`...context, "${objectName}", "${property}"`
+			imports,
+			`${objectName}.${property}`
 		);
 
 		if (!isReference(propertySchema)) {
@@ -378,14 +239,12 @@ const writeObjectModel = (
 
 		printBuilder.append(property);
 		printBuilder.append(": ");
-		printBuilder.append(
-			print ? print(`value.${property}`) : `value.${property}`
-		);
+		printBuilder.append(toJson());
 		printBuilder.append(",");
 
 		validateBuilder.append(property);
 		validateBuilder.append(": ");
-		validateBuilder.append(validate(`json.${property}`, false));
+		validateBuilder.append(fromJson());
 		validateBuilder.append(",");
 	}
 
@@ -399,299 +258,29 @@ const writeObjectModel = (
 	b.append(objectName);
 	b.append(" to JSON. */\nexport const print");
 	b.append(objectName);
-	b.append(" = (value: ");
+	b.append(" = printModelObject<");
 	b.append(objectName);
-	b.append("): any => ({");
+	b.append(">(");
+	b.append(JSON.stringify(objectName));
+	b.append(", {");
 	b.append(printBuilder);
 	b.append("});\n\n/** Convert from JSON to ");
 	b.append(objectName);
-	b.append(". */\nexport const validate");
+	b.append(". */\nexport const test");
 	b.append(objectName);
-	b.append(" = (json: any, context: string[] = []): ");
+	b.append(" = testModelObject<");
 	b.append(objectName);
-	b.append(" => validateObject(json, context) && ({");
+	b.append(">(");
+	b.append(JSON.stringify(objectName));
+	b.append(", {");
 	b.append(validateBuilder);
 	b.append("});");
 	return b.toString();
 };
 
-type RuntimeType = {
-	typeName: string;
-	print?: (name: string) => string;
-	validate: (name: string, param: boolean) => string;
-};
-
-const getTypeFromSchema = (
-	imports: Imports,
-	schema: OpenAPISchema | OpenAPIReference,
-	required: boolean,
-	context: string
-): RuntimeType => {
-	const props = new Set(Object.keys(schema));
-	if (isReference(schema)) {
-		props.delete("$ref");
-		if (props.size) {
-			throw `Unexpected properties of schema reference '${context}': ${Array.from(
-				props
-			)}`;
-		}
-		const ident = getComponentFromRef(schema.$ref);
-		imports.addLocal("model", ident.kebab, ident.upperCamel);
-		return {
-			typeName: ident.upperCamel,
-			print: (name) => {
-				const printMethod = `print${ident.upperCamel}`;
-				imports.addLocal("model", ident.kebab, printMethod);
-				if (required) {
-					return `${printMethod}(${name})`;
-				}
-				imports.addValidate("isUndefined");
-				return `isUndefined(${name}) ? undefined : ${printMethod}(${name})`;
-			},
-			validate: (name) => {
-				const validateMethod = `validate${ident.upperCamel}`;
-				imports.addLocal("model", ident.kebab, validateMethod);
-				if (required) {
-					return `${validateMethod}(${name}, [${context}])`;
-				}
-				imports.addValidate("isUndefined");
-				return `isUndefined(${name}) ? undefined : ${validateMethod}(${name}, [${context}])`;
-			},
-		};
-	}
-
-	props.delete("description");
-	props.delete("type");
-	const {
-		type,
-		format,
-		minLength,
-		maxLength,
-		additionalProperties,
-		items,
-	} = schema;
-	switch (type) {
-		case "string": {
-			props.delete("format");
-			switch (format) {
-				case undefined:
-				case "email": {
-					props.delete("minLength");
-					props.delete("maxLength");
-					if (props.size) {
-						throw `Unexpected properties of string schema '${context}': ${Array.from(
-							props
-						)}`;
-					}
-
-					return {
-						typeName: "string",
-						validate: (name) => {
-							const options: string[] = [];
-							if (minLength === 0) {
-								throw `Unexpected minLength of 0 in '${context}'`;
-							}
-							if (minLength) {
-								options.push(`minLength: ${minLength}`);
-							}
-							if (maxLength === 0) {
-								throw `Unexpected maxLength of 0 in '${context}'`;
-							}
-							if (maxLength) {
-								options.push(`maxLength: ${maxLength}`);
-							}
-							if (format === "email") {
-								options.push("email: true");
-							}
-							const optionsString = options.length
-								? `, { ${options.join(", ")} }`
-								: "";
-							imports.addValidate("validateString");
-							if (required) {
-								return `validateString(${name}, [${context}]${optionsString})`;
-							}
-							imports.addValidate("validateOpt");
-							if (!optionsString) {
-								return `validateOpt(${name}, validateString, [${context}])`;
-							}
-							return `validateOpt(${name}, (thing, context) => validateString(thing, context${optionsString}), [${context}])`;
-						},
-					};
-				}
-
-				case "date":
-				case "date-time": {
-					if (props.size) {
-						throw `Unexpected properties of ${format} schema '${context}': ${Array.from(
-							props
-						)}`;
-					}
-
-					imports.addGlobal("luxon", "DateTime");
-					const [validateMethod, printMethod] =
-						format === "date"
-							? ["validateDateString", "toISODate"]
-							: ["validateDateTimeString", "toISO"];
-
-					return {
-						typeName: "DateTime",
-						print: (name) => {
-							if (required) {
-								return `${name}.toUTC().${printMethod}()`;
-							}
-							imports.addValidate("isUndefined");
-							return `isUndefined(${name}) ? undefined : ${name}.toUTC().${printMethod}()`;
-						},
-						validate: (name) => {
-							imports.addValidate(validateMethod);
-							if (required) {
-								return `${validateMethod}(${name}, [${context}])`;
-							}
-							imports.addValidate("validateOpt");
-							return `validateOpt(${name}, ${validateMethod}, [${context}])`;
-						},
-					};
-				}
-
-				default:
-					throw `Unexpected string format '${format}' of '${context}'`;
-			}
-		}
-
-		case "boolean":
-		case "integer":
-		case "number": {
-			if (props.size) {
-				throw `Unexpected properties of ${type} schema '${context}': ${Array.from(
-					props
-				)}`;
-			}
-
-			const typeName =
-				type === "integer" || type === "number" ? "BigNumber" : type;
-			if (typeName === "BigNumber") {
-				imports.addGlobal("bignumber.js", "BigNumber", true);
-			}
-
-			return {
-				typeName,
-				validate: (name, param) => {
-					let validateMethod = `validate${capitalize(type)}`;
-					if (param) {
-						validateMethod += "String";
-					}
-					imports.addValidate(validateMethod);
-					if (required) {
-						return `${validateMethod}(${name}, [${context}])`;
-					}
-					imports.addValidate("validateOpt");
-					return `validateOpt(${name}, ${validateMethod}, [${context}])`;
-				},
-			};
-		}
-
-		case "object": {
-			props.delete("additionalProperties");
-			if (props.size) {
-				throw `Unexpected properties of array schema '${context}': ${Array.from(
-					props
-				)}`;
-			}
-
-			if (typeof additionalProperties === "boolean") {
-				throw `Expected 'additionalProperties' inside '${context}' to be a schema or reference, but found: ${additionalProperties}`;
-			}
-
-			if (!additionalProperties) {
-				throw `Expected 'additionalProperties' inside '${context}'`;
-			}
-
-			const { typeName, print, validate } = getTypeFromSchema(
-				imports,
-				additionalProperties,
-				true,
-				`${context}, "additionalProperties"`
-			);
-			return {
-				typeName: `ReadonlyMap<string, ${typeName}>`,
-				...(print && {
-					print: (name) => {
-						const inner = print("x");
-						imports.addValidate("printMap");
-						if (required) {
-							return `printMap(${name}, (x) => ${inner})`;
-						}
-						imports.addValidate("isUndefined");
-						return `isUndefined(${name}) ? undefined : printMap(${name}, (x) => ${inner})`;
-					},
-				}),
-				validate: (name, param) => {
-					if (param) {
-						throw `Unexpected object param schema '${context}'`;
-					}
-					const inner = validate("x", false);
-					imports.addValidate("validateMap");
-					if (required) {
-						return `validateMap(${name}, (x) => ${inner}, [${context}])`;
-					}
-					imports.addValidate("validateOpt");
-					return `validateOpt(${name}, (thing, context) => validateMap(thing, (x) => ${inner}, context), [${context}])`;
-				},
-			};
-		}
-
-		case "array": {
-			props.delete("items");
-			if (props.size) {
-				throw `Unexpected properties of array schema '${context}': ${Array.from(
-					props
-				)}`;
-			}
-
-			if (!items) {
-				throw `Expected 'items' inside '${context}'`;
-			}
-
-			const { typeName, print, validate } = getTypeFromSchema(
-				imports,
-				items,
-				true,
-				`${context}, "items"`
-			);
-			return {
-				typeName: `ReadonlyArray<${typeName}>`,
-				...(print && {
-					print: (name) => {
-						const inner = print("x");
-						if (required) {
-							return `${name}.map((x) => ${inner})`;
-						}
-						imports.addValidate("isUndefined");
-						return `isUndefined(${name}) ? undefined : ${name}.map((x) => ${inner})`;
-					},
-				}),
-				validate: (name, param) => {
-					const validateMethod = param ? "validateParamArray" : "validateArray";
-					const inner = validate("x", false);
-					imports.addValidate(validateMethod);
-					if (required) {
-						return `${validateMethod}(${name}, (x) => ${inner}, [${context}])`;
-					}
-					imports.addValidate("validateOpt");
-					return `validateOpt(${name}, (thing, context) => ${validateMethod}(thing, (x) => ${inner}, context), [${context}])`;
-				},
-			};
-		}
-
-		default:
-			throw `Unexpected type '${type}' of '${context}'`;
-	}
-};
-
 const getTypeFromContent = (
-	imports: Imports,
 	content: Record<string, OpenAPIMediaType> | undefined,
-	required: boolean,
+	imports: Imports,
 	context: string
 ) => {
 	if (!content) return;
@@ -699,7 +288,7 @@ const getTypeFromContent = (
 	if (!jsonContent) return;
 	const { schema } = jsonContent;
 	if (!schema) return;
-	return getTypeFromSchema(imports, schema, required, context);
+	return getRuntimeType(schema, imports, context);
 };
 
 const writeApi = (
@@ -720,7 +309,7 @@ const writeApi = (
 		summary,
 		description,
 		method,
-		operationId,
+		operationId: operationId,
 		parameters = [],
 		requestBody,
 		responses,
@@ -730,8 +319,18 @@ const writeApi = (
 		...otherOperationProps
 	} of operations) {
 		if (!operationId) {
-			throw `Expected operation ID for ${method} ${urlToString(url)}`;
+			throw `Expected operation ID for ${method} ${url.original}`;
 		}
+		const methodName = (() => {
+			if (/^\w+$/.test(operationId)) {
+				return operationId;
+			}
+			const m = /^(\w+)\.(\w+)$/.exec(operationId);
+			if (m && m[1] === tag.upperCamel) {
+				return m[2];
+			}
+			throw `Expected operation ID for ${method} ${url.original} to start with "${tag.upperCamel}."`;
+		})();
 
 		const paramNames: string[] = [];
 		const paramsWithTypes: string[] = [];
@@ -747,21 +346,26 @@ const writeApi = (
 
 		if (requestBody) {
 			const requestType = getTypeFromContent(
-				imports,
 				requestBody?.content,
-				requestBody.required || false,
-				`"${operationId}", "requestBody"`
+				imports,
+				`${operationId}.requestBody`
 			);
 			if (requestType) {
 				if (!requestBody.required) {
 					throw `Body is not required for operation ${operationId}`;
 				}
-				paramNames.push("body");
-				paramsWithTypes.push(`body: ${requestType.typeName}`);
 
-				paramLines.append("const body = ");
-				paramLines.append(requestType.validate("req.body", false));
-				paramLines.append(";");
+				const { typeName, fromJson } = requestType;
+
+				paramNames.push("body");
+				paramsWithTypes.push(`body: ${typeName}`);
+
+				imports.addValidate("validate");
+				paramLines.append("const body = validate(");
+				paramLines.append(fromJson());
+				paramLines.append(")(req.body, [");
+				paramLines.append(JSON.stringify(operationId));
+				paramLines.append(', "requestBody"]);');
 
 				addJsDoc("@param body", requestBody.description || "Request body.");
 			}
@@ -782,27 +386,39 @@ const writeApi = (
 				throw `Expected schema inside of parameter ${paramName} of ${operationId}`;
 			}
 
-			const type = getTypeFromSchema(
-				imports,
+			const { typeName, fromJsonParam } = getRuntimeType(
 				paramSchema,
-				paramRequired,
-				`"${operationId}", "${paramType}", "${paramName}"`
+				imports,
+				`${operationId}.${paramType}.${paramName}`
 			);
 			paramNames.push(paramName);
 			paramsWithTypes.push(
-				`${paramName}: ${type.typeName}${paramRequired ? "" : " | undefined"}`
+				`${paramName}: ${typeName}${paramRequired ? "" : " | undefined"}`
 			);
 
+			imports.addValidate("validate");
 			paramLines.append("const ");
 			paramLines.append(paramName);
-			paramLines.append(" = ");
-			paramLines.append(
-				type.validate(
-					`req.${paramType === "path" ? "params" : paramType}.${paramName}`,
-					true
-				)
-			);
-			paramLines.append(";");
+			paramLines.append(" = validate(");
+			if (!paramRequired) {
+				imports.addValidate("opt");
+				paramLines.append("opt(");
+			}
+			paramLines.append(fromJsonParam());
+			if (!paramRequired) {
+				paramLines.append(")");
+			}
+			paramLines.append(")(req.");
+			paramLines.append(paramType === "path" ? "params" : paramType);
+			paramLines.append(".");
+			paramLines.append(paramName);
+			paramLines.append(", [");
+			paramLines.append(JSON.stringify(operationId));
+			paramLines.append(", ");
+			paramLines.append(JSON.stringify(paramType));
+			paramLines.append(", ");
+			paramLines.append(JSON.stringify(paramName));
+			paramLines.append("]);");
 
 			addJsDoc(
 				`@param ${paramName}`,
@@ -820,10 +436,9 @@ const writeApi = (
 			throw `Unexpected reference in response of ${operationId}`;
 		const { content: responseContent } = response;
 		const returnType = getTypeFromContent(
-			imports,
 			responseContent,
-			true,
-			`"${operationId}", "200", "responseBody"`
+			imports,
+			`${operationId}.200.responseBody`
 		);
 		if (returnType) {
 			addJsDoc("@return", response.description || "Response body.");
@@ -838,7 +453,7 @@ const writeApi = (
 			...paramJsDoc
 		);
 		abstractMethodLines.append("abstract ");
-		abstractMethodLines.append(operationId);
+		abstractMethodLines.append(methodName);
 		abstractMethodLines.append("(");
 		paramsWithTypes.forEach((p, i) => {
 			if (i > 0) abstractMethodLines.append(",");
@@ -857,24 +472,38 @@ const writeApi = (
 			}
 		}
 
+		const addResponseValidator = () => {
+			if (returnType) {
+				imports.addValidate("validate");
+				registerLines.append(".then((result) => validate(");
+				registerLines.append(returnType.toJson());
+				registerLines.append(")(result, [");
+				registerLines.append(JSON.stringify(operationId));
+				registerLines.append(', "200", "responseBody"]))');
+			}
+		};
+
 		// TODO authentication
 		registerLines.append("app.");
 		registerLines.append(method.toLowerCase());
 		registerLines.append("(");
 		registerLines.append(JSON.stringify(urlString.toString()));
-		registerLines.append(
-			", (req: Request, res: Response) => this.handleResponse(res, "
-		);
+		registerLines.append(", (req: Request, res: Response) => ");
+		registerLines.append("this.handleResponse(res, ");
 		if (paramNames.length) {
 			registerLines.append("(async () => {");
 			registerLines.append(paramLines);
 			registerLines.append("return await this.");
-			registerLines.append(operationId);
+			registerLines.append(methodName);
 			registerLines.append("(");
 			registerLines.append(paramNames.join());
-			registerLines.append(");})())");
+			registerLines.append(")");
+			addResponseValidator();
+			registerLines.append(";})())");
 		} else {
-			registerLines.append(`this.${operationId}())`);
+			registerLines.append(`this.${methodName}()`);
+			addResponseValidator();
+			registerLines.append(")");
 		}
 		registerLines.append(");");
 
@@ -939,8 +568,18 @@ const writeClient = (
 		...otherOperationProps
 	} of operations) {
 		if (!operationId) {
-			throw `Expected operation ID for ${method} ${urlToString(url)}`;
+			throw `Expected operation ID for ${method} ${url.original}`;
 		}
+		const methodName = (() => {
+			if (/^\w+$/.test(operationId)) {
+				return operationId;
+			}
+			const m = /^(\w+)\.(\w+)$/.exec(operationId);
+			if (m && m[1] === tag.upperCamel) {
+				return m[2];
+			}
+			throw `Expected operation ID for ${method} ${url.original} to start with "${tag.upperCamel}."`;
+		})();
 
 		const paramNames: string[] = [];
 		const paramsWithTypes: string[] = [];
@@ -956,10 +595,9 @@ const writeClient = (
 		let hasBody = false;
 		if (requestBody) {
 			const requestType = getTypeFromContent(
-				imports,
 				requestBody?.content,
-				requestBody.required || false,
-				`"${operationId}", "requestBody"`
+				imports,
+				`${operationId}.requestBody`
 			);
 			if (requestType) {
 				if (!requestBody.required)
@@ -989,18 +627,17 @@ const writeClient = (
 				throw `Expected schema inside of parameter ${paramName} of ${operationId}`;
 			}
 
-			const type = getTypeFromSchema(
-				imports,
+			const { typeName } = getRuntimeType(
 				paramSchema,
-				paramRequired,
-				`"${operationId}", "${paramType}", "${paramName}"`
+				imports,
+				`${operationId}.${paramType}.${paramName}`
 			);
 			paramNames.push(paramName);
 			if (paramType === "query") {
 				queryParamNames.push(paramName);
 			}
 			paramsWithTypes.push(
-				`${paramName}: ${type.typeName}${paramRequired ? "" : " | undefined"}`
+				`${paramName}: ${typeName}${paramRequired ? "" : " | undefined"}`
 			);
 			addJsDoc(
 				`@param ${paramName}`,
@@ -1023,10 +660,9 @@ const writeClient = (
 			throw `Unexpected reference in response of ${operationId}`;
 		const { content: responseContent } = response;
 		const returnType = getTypeFromContent(
-			imports,
 			responseContent,
-			true,
-			`"${operationId}", "200", "responseBody"`
+			imports,
+			`${operationId}.200.responseBody`
 		);
 		if (returnType) {
 			addJsDoc("@return", response.description || "Response body.");
@@ -1035,7 +671,7 @@ const writeClient = (
 		// TODO add auth header
 
 		appendMarkdownAsComment(b, summary, "", description, "", ...paramJsDoc);
-		b.append(operationId);
+		b.append(methodName);
 		b.append("(");
 		paramsWithTypes.forEach((p) => {
 			b.append(p);
@@ -1084,7 +720,8 @@ const writeClient = (
 		}
 		if (returnType) {
 			b.append("(json: any) => ");
-			b.append(returnType.validate("json", false));
+			// TODO json
+			b.append(returnType.fromJson());
 			b.append(",");
 		}
 		b.append(");}");
@@ -1100,17 +737,11 @@ const writeClient = (
 	return b.toString();
 };
 
-import path from "path";
 const apiDir = path.resolve(outputDir, mode);
 const modelDir = path.resolve(outputDir, "model");
 
 fs.mkdirSync(apiDir);
 fs.mkdirSync(modelDir);
-
-import prettier from "prettier";
-import { baseApi, baseClient, validate } from "./static";
-
-const isReference = (x: any): x is OpenAPIReference => x && "$ref" in x;
 
 (async () => {
 	const prettierConfig = {
@@ -1135,24 +766,32 @@ const isReference = (x: any): x is OpenAPIReference => x && "$ref" in x;
 			writeFile(path.resolve(outputDir, "base-client.ts"), baseClient);
 			break;
 	}
-	writeFile(path.resolve(outputDir, "validate.ts"), validate);
+	writeFile(path.resolve(outputDir, "type-utils.ts"), typeUtils);
 
 	for (const [rawName, schema] of Object.entries(schemas)) {
 		const ident = Identifier.fromCamel(rawName);
 		if (isReference(schema)) {
 			throw `Schema ${ident.upperCamel} was a reference`;
 		}
-		let contents: string;
 		switch (schema.type) {
 			case "string":
-				contents = writeEnumModel(ident.upperCamel, schema);
+				enumTypes.push(ident.upperCamel);
 				break;
 			case "object":
-				contents = writeObjectModel(ident.upperCamel, schema);
+				objectTypes.push(ident.upperCamel);
 				break;
 			default:
 				throw `Unexpected schema type: ${schema.type}`;
 		}
+	}
+
+	for (const [rawName, _schema] of Object.entries(schemas)) {
+		const ident = Identifier.fromCamel(rawName);
+		const schema = _schema as OpenAPISchema;
+		const contents =
+			schema.type === "string"
+				? writeEnumModel(ident.upperCamel, schema)
+				: writeObjectModel(ident.upperCamel, schema);
 		writeFile(path.resolve(modelDir, `${ident.kebab}.ts`), contents);
 	}
 
