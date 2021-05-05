@@ -602,9 +602,28 @@ export function or<T, INPUT>(): TypeTest<T, INPUT> {
  * @param test The test to wrap.
  * @returns A \`TypeTest\` that wraps the given \`TypeTest\`.
  */
-export function opt<T, INPUT>(test: TypeTest<T, INPUT>): TypeTest<T | undefined, INPUT> {
+export function opt<T, INPUT>(
+	test: TypeTest<T, INPUT>,
+): TypeTest<T | undefined, INPUT> {
 	return (thing, context) =>
 		isUndefined(thing) ? success(undefined) : test(thing, context);
+}
+
+/**
+ * Maps the result of a \`TypeTest\`.
+ *
+ * @param test The test to wrap.
+ * @param f The map function.
+ * @returns A \`TypeTest\` that maps a result.
+ */
+export function map<T, U, INPUT>(
+	test: TypeTest<T, INPUT>,
+	f: (result: T) => U,
+): TypeTest<U, INPUT> {
+	return (thing, context) => {
+		const result = test(thing, context);
+		return isSuccess(result) ? success(f(result.value)) : result;
+	};
 }
 
 /**
@@ -705,7 +724,7 @@ export function printMap<T>(
 	test: TypeTest<any, T>
 ): TypeTest<object, ReadonlyMap<string, T>> {
 	return (thing, context) => {
-		const results: object = {};
+		const results: any = {};
 		for (const [key, value] of thing.entries()) {
 			const result = test(value, [...context, key]);
 			if (!isSuccess(result)) return result;
@@ -1171,6 +1190,27 @@ export function testOneOf<T>(values: ReadonlyArray<T>): TypeTest<T, unknown> {
 			  );
 }
 
+/**
+ * Validates that something is one of a known list of input values, and maps that value to an output value.
+ *
+ * @param map The map of known values.
+ * @returns A \`TypeTest\` for the given values.
+ */
+export function mapOneOf<T, U>(map: ReadonlyMap<T, U>): TypeTest<U, unknown> {
+	return (thing, context) => {
+		for (const [input, output] of map.entries()) {
+			if (thing === input) {
+				return success(output);
+			}
+		}
+		return failure(
+			\`Expected '\${context.join('.')}' to be one of [\${Array.from(
+				map.keys(),
+			).join(', ')}], but found: \${thing}\`,
+		);
+	};
+}
+
 /** Utility type for building model objects. */
 export type TestModelObjectProps<T> = {
 	readonly [K in keyof T]-?: TypeTest<T[K], unknown>;
@@ -1185,20 +1225,53 @@ export type TestModelObjectProps<T> = {
  */
 export function testModelObject<T>(
 	name: string,
-	props: TestModelObjectProps<T>
+	props: TestModelObjectProps<T>,
 ): TypeTest<T, unknown> {
 	return addContext(
 		and(testObject, (thing, context) => {
-			const obj: Partial<T> = {};
+			const obj: any = {};
 			for (const [key, test] of Object.entries(props)) {
-				const result = (test as TypeTest<any, unknown>)(thing[key], [...context, key]);
+				const result = (test as TypeTest<any, unknown>)((thing as any)[key], [
+					...context,
+					key,
+				]);
 				if (!isSuccess(result)) return result;
 				obj[key] = result.value;
 			}
 			return success(obj as T);
 		}),
-		name
+		name,
 	);
+}
+
+/**
+ * Validates that a database row has all of the specified properties.
+ *
+ * @param props The properties to validate.
+ * @param context The context to report error messages in.
+ * @returns A converter for the given properties.
+ */
+export function convertRow<T>(
+	props: TestModelObjectProps<T>,
+	context: string[],
+): (row: unknown[]) => T {
+	return (row) => {
+		const entries = Object.entries(props);
+		if (row.length !== entries.length) {
+			throw 'Row length did not match number of props.';
+		}
+		const obj: any = {};
+		for (let i = 0; i < row.length; i++) {
+			const [key, test] = entries[i];
+			const result = (test as TypeTest<any, unknown>)(row[i], [
+				...context,
+				key,
+			]);
+			if (!isSuccess(result)) throw result;
+			obj[key] = result.value;
+		}
+		return obj as T;
+	};
 }
 
 /** Utility type to map DateTime to string. */
@@ -1230,13 +1303,16 @@ export function printModelObject<T>(
 		and(testObject, (thing, context) => {
 			const obj: any = {};
 			for (const [key, test] of Object.entries(props)) {
-				const result = (test as TypeTest<any, unknown>)(thing[key], [...context, key]);
+				const result = (test as TypeTest<any, unknown>)((thing as any)[key], [
+					...context,
+					key,
+				]);
 				if (!isSuccess(result)) return result;
 				obj[key] = result.value;
 			}
 			return success(obj);
 		}),
-		name
+		name,
 	);
 }
 `;
