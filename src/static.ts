@@ -1274,18 +1274,9 @@ export function convertRow<T>(
 	};
 }
 
-/** Utility type to map DateTime to string. */
-export type MapPrintType<T> = T extends ReadonlyArray<infer E>
-	? ReadonlyArray<MapPrintType<E>>
-	: T extends DateTime
-	? string
-	: T extends object
-	? object
-	: T;
-
 /** Utility type for building model objects. */
 export type PrintModelObjectProps<T> = {
-	readonly [K in keyof T]-?: TypeTest<MapPrintType<T[K]>, T[K]>;
+	readonly [K in keyof T]-?: TypeTest<any, T[K]>;
 };
 
 /**
@@ -1298,22 +1289,19 @@ export type PrintModelObjectProps<T> = {
 export function printModelObject<T>(
 	name: string,
 	props: PrintModelObjectProps<T>
-): TypeTest<object, T> {
-	return addContext(
-		and(testObject, (thing, context) => {
-			const obj: any = {};
-			for (const [key, test] of Object.entries(props)) {
-				const result = (test as TypeTest<any, unknown>)((thing as any)[key], [
-					...context,
-					key,
-				]);
-				if (!isSuccess(result)) return result;
-				obj[key] = result.value;
-			}
-			return success(obj);
-		}),
-		name,
-	);
+): TypeTest<any, T> {
+	return addContext((thing, context) => {
+		const obj: any = {};
+		for (const [key, test] of Object.entries(props)) {
+			const result = (test as TypeTest<any, unknown>)(thing[key as keyof T], [
+				...context,
+				key,
+			]);
+			if (!isSuccess(result)) return result;
+			obj[key] = result.value;
+		}
+		return success(obj);
+	}, name);
 }
 `;
 // #endregion
