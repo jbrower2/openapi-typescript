@@ -230,6 +230,8 @@ const writeObjectModel = (
 			);
 		}
 
+		if (!required) imports.addValidate("opt");
+
 		propertyBuilder.append("readonly ");
 		propertyBuilder.append(property);
 		if (!required) propertyBuilder.append("?");
@@ -239,12 +241,16 @@ const writeObjectModel = (
 
 		printBuilder.append(property);
 		printBuilder.append(": ");
+		if (!required) printBuilder.append("opt(");
 		printBuilder.append(toJson());
+		if (!required) printBuilder.append(")");
 		printBuilder.append(",");
 
 		validateBuilder.append(property);
 		validateBuilder.append(": ");
+		if (!required) validateBuilder.append("opt(");
 		validateBuilder.append(fromJson());
+		if (!required) validateBuilder.append(")");
 		validateBuilder.append(",");
 	}
 

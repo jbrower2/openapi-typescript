@@ -604,7 +604,7 @@ export function or<T, INPUT>(): TypeTest<T, INPUT> {
  */
 export function opt<T, INPUT>(
 	test: TypeTest<T, INPUT>,
-): TypeTest<T | undefined, INPUT> {
+): TypeTest<T | undefined, INPUT | null | undefined> {
 	return (thing, context) =>
 		isUndefined(thing) ? success(undefined) : test(thing, context);
 }
@@ -1070,7 +1070,10 @@ export const testStringIsOracleDate: TypeTest<
 	string
 > = and(
 	testStringLength(19, 19),
-	testStringMatches(/^(d{4})-(d{2})-(d{2})T00:00:00$/, "to be an Oracle date"),
+	testStringRegExp(
+		/^(\\d{4})-(\\d{2})-(\\d{2})T00:00:00$/,
+		"to be an Oracle date"
+	),
 	([, year, month, day]) =>
 		success(
 			DateTime.utc(parseInt(year, 10), parseInt(month, 10), parseInt(day, 10))
@@ -1089,7 +1092,10 @@ export const testStringIsDate: TypeTest<
 	string
 > = and(
 	testStringLength(10, 10),
-	testStringMatches(/^(d{4})-(d{2})-(d{2})$/, "to be an ISO date"),
+	testStringRegExp(
+		/^(\\d{4})-(\\d{2})-(\\d{2})$/,
+		"to be an ISO date"
+	),
 	([, year, month, day]) =>
 		success(
 			DateTime.utc(parseInt(year, 10), parseInt(month, 10), parseInt(day, 10))
@@ -1105,8 +1111,8 @@ export const testDateString: TypeTest<DateTime, unknown> = and(
 /** Validates that a string represents an Oracle date-time. */
 export const testStringIsOracleDateTime: TypeTest<DateTime, string> = and(
 	testStringLength(19, 19),
-	testStringMatches(
-		/^(d{4})-(d{2})-(d{2})T(d{2}):(d{2}):(d{2})$/,
+	testStringRegExp(
+		/^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})$/,
 		"to be an Oracle date-time"
 	),
 	([, year, month, day, hour, minute, second]) =>
@@ -1135,8 +1141,8 @@ export const testStringIsDateTime: TypeTest<
 	string
 > = and(
 	testStringLength(24, 24),
-	testStringMatches(
-		/^(d{4})-(d{2})-(d{2})T(d{2}):(d{2}):(d{2}).(d{3})Z$/,
+	testStringRegExp(
+		/^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})Z$/,
 		"to be an Oracle date-time"
 	),
 	([, year, month, day, hour, minute, second, millisecond]) =>
