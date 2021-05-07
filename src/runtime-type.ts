@@ -43,17 +43,15 @@ export const BOOLEAN: RuntimeTypeProvider = (imports) => {
 	};
 };
 
-/** Type for `BigNumber` values. */
+/** Type for `number` values. */
 export const NUMBER: RuntimeTypeProvider = (imports) => {
-	imports.addGlobal("bignumber.js", "BigNumber", true);
-
 	const fromJson = () => {
 		imports.addValidate("testNumber");
 		return "testNumber";
 	};
 
 	return {
-		typeName: "BigNumber",
+		typeName: "number",
 		fromJson,
 		toJson: fromJson,
 
@@ -64,13 +62,32 @@ export const NUMBER: RuntimeTypeProvider = (imports) => {
 	};
 };
 
-/** Type for `BigNumber` values. */
+/** Type for integer `number` values. */
 export const INTEGER: RuntimeTypeProvider = (imports) => {
-	imports.addGlobal("bignumber.js", "BigNumber", true);
-
 	const fromJson = () => {
 		imports.addValidate("testInteger");
 		return "testInteger";
+	};
+
+	return {
+		typeName: "number",
+		fromJson,
+		toJson: fromJson,
+
+		fromJsonParam() {
+			imports.addValidate("testIntegerString");
+			return "testIntegerString";
+		},
+	};
+};
+
+/** Type for `BigNumber` values. */
+export const BIG_NUMBER: RuntimeTypeProvider = (imports) => {
+	imports.addGlobal("bignumber.js", "BigNumber", true);
+
+	const fromJson = () => {
+		imports.addValidate("testBigNumber");
+		return "testBigNumber";
 	};
 
 	return {
@@ -79,8 +96,29 @@ export const INTEGER: RuntimeTypeProvider = (imports) => {
 		toJson: fromJson,
 
 		fromJsonParam() {
-			imports.addValidate("testIntegerString");
-			return "testIntegerString";
+			imports.addValidate("testBigNumberString");
+			return "testBigNumberString";
+		},
+	};
+};
+
+/** Type for integer `BigNumber` values. */
+export const BIG_INTEGER: RuntimeTypeProvider = (imports) => {
+	imports.addGlobal("bignumber.js", "BigNumber", true);
+
+	const fromJson = () => {
+		imports.addValidate("testBigInteger");
+		return "testBigInteger";
+	};
+
+	return {
+		typeName: "BigNumber",
+		fromJson,
+		toJson: fromJson,
+
+		fromJsonParam() {
+			imports.addValidate("testBigIntegerString");
+			return "testBigIntegerString";
 		},
 	};
 };
@@ -329,20 +367,19 @@ export function getRuntimeType(
 			return BOOLEAN(imports);
 
 		case "integer":
+		case "number": {
+			let generator = type === "integer" ? INTEGER : NUMBER;
+			if (format === "big") {
+				generator = type === "integer" ? BIG_INTEGER : BIG_NUMBER;
+				props.delete("format");
+			}
 			if (props.size) {
-				throw `Unexpected properties of integer schema '${context}': ${Array.from(
+				throw `Unexpected properties of ${type} schema '${context}': ${Array.from(
 					props
 				)}`;
 			}
-			return INTEGER(imports);
-
-		case "number":
-			if (props.size) {
-				throw `Unexpected properties of number schema '${context}': ${Array.from(
-					props
-				)}`;
-			}
-			return NUMBER(imports);
+			return generator(imports);
+		}
 
 		case "object": {
 			props.delete("additionalProperties");

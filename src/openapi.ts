@@ -205,6 +205,7 @@ export type OpenAPISchema = {
 	additionalProperties?: boolean | OpenAPISchema | OpenAPIReference;
 	description?: string;
 	format?:
+		| "big"
 		| "binary"
 		| "byte"
 		| "date-time"

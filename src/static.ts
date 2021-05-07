@@ -801,6 +801,56 @@ export function testBooleanDefault(defaultValue: boolean): TypeTest<boolean, unk
 		isUndefined(thing) ? success(defaultValue) : testBoolean(thing, context);
 }
 
+/** Tests that something is a \`number\`. */
+export const testIsNumber: TypeTest<number, unknown> = (thing, context) =>
+	typeof thing === 'number'
+		? success(thing)
+		: thing instanceof BigNumber
+		? success(thing.toNumber())
+		: failure(
+				\`Expected '\${context.join(
+					"."
+				)}' to be a number, but found: \${thing} (\${typeof thing})\`
+		  );
+
+/** Tests that a \`number\` is finite. */
+export const testNumberFinite: TypeTest<number, number> = (
+	thing,
+	context
+) =>
+	Number.isFinite(thing)
+		? success(thing)
+		: failure(
+				\`Expected '\${context.join(
+					"."
+				)}' to be a finite number, but found: \${thing} (\${typeof thing})\`
+		  );
+
+/** Validates that a \`number\` is an integer. */
+export const testNumberInteger: TypeTest<number, number> = (
+	thing,
+	context
+) =>
+	Number.isSafeInteger(thing)
+		? success(thing)
+		: failure(
+				\`Expected '\${context.join(
+					"."
+				)}' to be an integer, but found: \${thing} (\${typeof thing})\`
+		  );
+
+/** Tests that something is a \`number\` and is finite. */
+export const testNumber: TypeTest<number, unknown> = and(
+	testIsNumber,
+	testNumberFinite
+);
+
+/** Tests that something is a \`number\` and is an integer. */
+export const testInteger: TypeTest<number, unknown> = and(
+	testNumber,
+	testNumberInteger
+);
+
 /** Tests that a \`BigNumber\` is finite. */
 export const testBigNumberFinite: TypeTest<BigNumber, BigNumber> = (
 	thing,
@@ -811,7 +861,7 @@ export const testBigNumberFinite: TypeTest<BigNumber, BigNumber> = (
 		: failure(
 				\`Expected '\${context.join(
 					"."
-				)}' to be a number, but found: \${thing} (\${typeof thing})\`
+				)}' to be a finite number, but found: \${thing} (\${typeof thing})\`
 		  );
 
 /** Validates that a \`BigNumber\` is an integer. */
@@ -828,14 +878,14 @@ export const testBigNumberInteger: TypeTest<BigNumber, BigNumber> = (
 		  );
 
 /** Tests that something is a \`BigNumber\` and is finite. */
-export const testNumber: TypeTest<BigNumber, unknown> = and(
+export const testBigNumber: TypeTest<BigNumber, unknown> = and(
 	testType(BigNumber),
 	testBigNumberFinite
 );
 
 /** Tests that something is a \`BigNumber\` and is an integer. */
-export const testInteger: TypeTest<BigNumber, unknown> = and(
-	testNumber,
+export const testBigInteger: TypeTest<BigNumber, unknown> = and(
+	testBigNumber,
 	testBigNumberInteger
 );
 
@@ -1041,27 +1091,51 @@ export function testBooleanYNDefault(defaultValue: boolean): TypeTest<boolean, u
 }
 
 /** Validates that a string represents a number. */
-export const testStringIsNumber: TypeTest<BigNumber, string> = and(
-	(s) => success(new BigNumber(s)),
-	testBigNumberFinite
+export const testStringIsNumber: TypeTest<number, string> = and(
+	(s) => success(Number(s)),
+	testNumberFinite
 );
 
 /** Validates that something is a string representing a number. */
-export const testNumberString: TypeTest<BigNumber, unknown> = and(
+export const testNumberString: TypeTest<number, unknown> = and(
 	testString,
 	testStringIsNumber
 );
 
 /** Validates that a string represents an integer. */
-export const testStringIsInteger: TypeTest<BigNumber, string> = and(
+export const testStringIsInteger: TypeTest<number, string> = and(
+	(s) => success(Number(s)),
+	testNumberInteger
+);
+
+/** Validates that something is a string representing an integer. */
+export const testIntegerString: TypeTest<number, unknown> = and(
+	testString,
+	testStringIsInteger
+);
+
+/** Validates that a string represents a number. */
+export const testStringIsBigNumber: TypeTest<BigNumber, string> = and(
+	(s) => success(new BigNumber(s)),
+	testBigNumberFinite
+);
+
+/** Validates that something is a string representing a number. */
+export const testBigNumberString: TypeTest<BigNumber, unknown> = and(
+	testString,
+	testStringIsBigNumber
+);
+
+/** Validates that a string represents an integer. */
+export const testStringIsBigInteger: TypeTest<BigNumber, string> = and(
 	(s) => success(new BigNumber(s)),
 	testBigNumberInteger
 );
 
 /** Validates that something is a string representing an integer. */
-export const testIntegerString: TypeTest<BigNumber, unknown> = and(
+export const testBigIntegerString: TypeTest<BigNumber, unknown> = and(
 	testString,
-	testStringIsInteger
+	testStringIsBigInteger
 );
 
 /** Validates that a string represents an Oracle date. */
