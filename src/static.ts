@@ -774,9 +774,9 @@ export function testType<T>(typeRef: Type<T>): TypeTest<T, unknown> {
 		thing instanceof typeRef
 			? success(thing)
 			: failure(
-					\`Expected '\${context.join(
-						"."
-					)}' to be \${typeRef}, but found: \${thing} (\${typeof thing})\`
+					\`Expected '\${context.join(".")}' to be \${
+						typeRef.name
+					}, but found: \${thing} (\${typeof thing})\`
 			  );
 }
 
