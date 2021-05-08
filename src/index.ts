@@ -20,8 +20,6 @@ import { enumTypes, objectTypes, getRuntimeType } from "./runtime-type";
 import { baseApi, baseClient, typeUtils } from "./static";
 import { StringBuilder } from "./string-builder";
 
-import { version } from "../package.json";
-
 (async () => {
 	if (process.argv.length !== 5) {
 		console.error(
@@ -45,6 +43,7 @@ import { version } from "../package.json";
 	const specString = await fsp.readFile(specFile, "utf8");
 
 	// calculate hash of the spec
+	const { version } = JSON.parse(await fsp.readFile("../package.json", "utf8"));
 	const md5 = crypto.createHash("md5");
 	md5.update(`${version}\r\n \t\uFFFF\n${specString}`, "utf8");
 	const specHash = md5.digest("base64");
