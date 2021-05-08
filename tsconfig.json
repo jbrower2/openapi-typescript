@@ -12,7 +12,8 @@
 		"paths": {
 			"*": ["node_modules/*"]
 		},
-		"target": "ES5"
+		"target": "ES5",
+		"resolveJsonModule": true
 	},
 	"include": ["src/**/*.ts"]
 }

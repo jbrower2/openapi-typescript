@@ -20,6 +20,8 @@ import { enumTypes, objectTypes, getRuntimeType } from "./runtime-type";
 import { baseApi, baseClient, typeUtils } from "./static";
 import { StringBuilder } from "./string-builder";
 
+import { version } from "../package.json";
+
 (async () => {
 	if (process.argv.length !== 5) {
 		console.error(
@@ -44,7 +46,7 @@ import { StringBuilder } from "./string-builder";
 	const spec = YAML.parse(specString);
 
 	// calculate hash of the spec
-	const specHash = hash(spec);
+	const specHash = hash({ spec, version });
 
 	// check if the hash file matches
 	const hashFile = path.join(outputDir, "openapi.hash");
