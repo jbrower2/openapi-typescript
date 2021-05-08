@@ -172,9 +172,6 @@ export class UrlBuilder {
 	}
 }
 
-/** Helper type to disallow functions. */
-export type NotFunction<T> = T extends Function ? never : T;
-
 /** Base class for API clients. */
 export abstract class BaseClient {
 	/**
@@ -198,98 +195,6 @@ export abstract class BaseClient {
 	 *   The URL of the request.
 	 *
 	 *   See {UrlBuilder} to build a valid URL.
-	 */
-	fetch(
-		overrideConfig: Partial<ClientConfig>,
-		method: HttpMethod,
-		url: string
-	): Promise<void>;
-
-	/**
-	 * Perform an API request, with a request body.
-	 *
-	 * @param overrideConfig
-	 *   Overrides of {ClientConfig} options.
-	 *
-	 *   Any options not specified will default to the client's base config.
-	 * @param method
-	 *   The HTTP method of the request.
-	 * @param url
-	 *   The URL of the request.
-	 *
-	 *   See {UrlBuilder} to build a valid URL.
-	 * @param body
-	 *   The body of the request.
-	 */
-	fetch<I>(
-		overrideConfig: Partial<ClientConfig>,
-		method: HttpMethod,
-		url: string,
-		body: NotFunction<I>
-	): Promise<void>;
-
-	/**
-	 * Perform an API request, with a response handler.
-	 *
-	 * @param overrideConfig
-	 *   Overrides of {ClientConfig} options.
-	 *
-	 *   Any options not specified will default to the client's base config.
-	 * @param method
-	 *   The HTTP method of the request.
-	 * @param url
-	 *   The URL of the request.
-	 *
-	 *   See {UrlBuilder} to build a valid URL.
-	 * @param convertResponse
-	 *   The function for validating and converting the JSON response.
-	 */
-	fetch<O>(
-		overrideConfig: Partial<ClientConfig>,
-		method: HttpMethod,
-		url: string,
-		convertResponse: TypeTest<O, unknown>
-	): Promise<O>;
-
-	/**
-	 * Perform an API request, with a request body and response handler.
-	 *
-	 * @param overrideConfig
-	 *   Overrides of {ClientConfig} options.
-	 *
-	 *   Any options not specified will default to the client's base config.
-	 * @param method
-	 *   The HTTP method of the request.
-	 * @param url
-	 *   The URL of the request.
-	 *
-	 *   See {UrlBuilder} to build a valid URL.
-	 * @param body
-	 *   The body of the request.
-	 * @param convertResponse
-	 *   The function for validating and converting the JSON response.
-	 */
-	fetch<I, O>(
-		overrideConfig: Partial<ClientConfig>,
-		method: HttpMethod,
-		url: string,
-		body: NotFunction<I>,
-		convertResponse: TypeTest<O, unknown>
-	): Promise<O>;
-
-	/**
-	 * Perform an API request.
-	 *
-	 * @param overrideConfig
-	 *   Overrides of {ClientConfig} options.
-	 *
-	 *   Any options not specified will default to the client's base config.
-	 * @param method
-	 *   The HTTP method of the request.
-	 * @param url
-	 *   The URL of the request.
-	 *
-	 *   See {UrlBuilder} to build a valid URL.
 	 * @param body
 	 *   The body of the request.
 	 * @param convertResponse
@@ -299,7 +204,7 @@ export abstract class BaseClient {
 		overrideConfig: Partial<ClientConfig>,
 		method: HttpMethod,
 		url: string,
-		body?: NotFunction<I>,
+		body?: I,
 		convertResponse?: TypeTest<O, unknown>
 	): Promise<O> {
 		// coerce empty string to no response

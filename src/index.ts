@@ -756,6 +756,7 @@ import { StringBuilder } from "./string-builder";
 				b.append("body,");
 			}
 			if (returnType) {
+				if (!hasBody) b.append("undefined,");
 				b.append(returnType.fromJson());
 				b.append(",");
 			}
