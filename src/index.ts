@@ -1,6 +1,6 @@
+import crypto from "crypto";
 import fs from "fs";
 import fsp from "fs/promises";
-import hash from "object-hash";
 import path from "path";
 import prettier from "prettier";
 import rimraf from "rimraf";
@@ -43,13 +43,14 @@ import { version } from "../package.json";
 	}
 
 	const specString = await fsp.readFile(specFile, "utf8");
-	const spec = YAML.parse(specString);
 
 	// calculate hash of the spec
-	const specHash = hash({ spec, version });
+	const md5 = crypto.createHash("md5");
+	md5.update(`${version}\r\n \t\uFFFF\n${specString}`, "utf8");
+	const specHash = md5.digest("base64");
 
 	// check if the hash file matches
-	const hashFile = path.join(outputDir, "openapi.hash");
+	const hashFile = path.join(outputDir, `openapi.hash`);
 	if (fs.existsSync(hashFile)) {
 		const existingHash = await fsp.readFile(hashFile, "utf8");
 		if (existingHash === specHash) {
@@ -73,7 +74,7 @@ import { version } from "../package.json";
 	// make output directory
 	await fsp.mkdir(outputDir, { recursive: true });
 
-	const { components, paths, tags = [] }: OpenAPI = spec;
+	const { components, paths, tags = [] }: OpenAPI = YAML.parse(specString);
 	if (!components) throw "Expected components to be defined!";
 	const { schemas, securitySchemes } = components;
 	if (!schemas) throw "Expected schemas to be defined!";
