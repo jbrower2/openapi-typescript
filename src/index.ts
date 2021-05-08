@@ -43,7 +43,7 @@ import { StringBuilder } from "./string-builder";
 	const specString = await fsp.readFile(specFile, "utf8");
 
 	// calculate hash of the spec
-	const { version } = JSON.parse(await fsp.readFile("../package.json", "utf8"));
+	const { version } = require("../package.json");
 	const md5 = crypto.createHash("md5");
 	md5.update(`${version}\r\n \t\uFFFF\n${specString}`, "utf8");
 	const specHash = md5.digest("base64");
