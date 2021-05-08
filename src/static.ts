@@ -333,7 +333,7 @@ export abstract class BaseClient {
 		const json = await response.json();
 		if (!response.ok) throw json;
 
-		if (convertResponse) return convertResponse(json);
+		return convertResponse?.(json) as O;
 	}
 }
 `;
