@@ -64,6 +64,8 @@ export abstract class BaseApi {
 export const baseClient = `
 import JSONbig from 'json-bigint';
 
+import { isSuccess, TypeTest } from './type-utils';
+
 /** Enum of the valid HTTP methods. */
 export type HttpMethod =
 	| "GET"
@@ -246,7 +248,7 @@ export abstract class BaseClient {
 		overrideConfig: Partial<ClientConfig>,
 		method: HttpMethod,
 		url: string,
-		convertResponse: (json: any) => O
+		convertResponse: TypeTest<O, unknown>
 	): Promise<O>;
 
 	/**
@@ -272,7 +274,7 @@ export abstract class BaseClient {
 		method: HttpMethod,
 		url: string,
 		body: NotFunction<I>,
-		convertResponse: (json: any) => O
+		convertResponse: TypeTest<O, unknown>
 	): Promise<O>;
 
 	/**
@@ -298,7 +300,7 @@ export abstract class BaseClient {
 		method: HttpMethod,
 		url: string,
 		body?: NotFunction<I>,
-		convertResponse?: (json: any) => O
+		convertResponse?: TypeTest<O, unknown>
 	): Promise<O> {
 		// coerce empty string to no response
 		const bodyString = JSONbig.stringify(body) || undefined;
@@ -333,7 +335,12 @@ export abstract class BaseClient {
 		const json = await response.json();
 		if (!response.ok) throw json;
 
-		return convertResponse?.(json) as O;
+		if (!convertResponse) return (undefined as unknown) as O;
+
+		const result = convertResponse(json, [method, url]);
+		if (!isSuccess(result)) throw result?.message;
+
+		return result.value;
 	}
 }
 `;

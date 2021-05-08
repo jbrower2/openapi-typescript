@@ -754,8 +754,6 @@ import { StringBuilder } from "./string-builder";
 				b.append("body,");
 			}
 			if (returnType) {
-				b.append("(json: any) => ");
-				// TODO json
 				b.append(returnType.fromJson());
 				b.append(",");
 			}
