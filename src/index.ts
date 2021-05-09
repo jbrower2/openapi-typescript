@@ -937,4 +937,7 @@ import { StringBuilder } from "./string-builder";
 
 	// last thing to do is write the hash to the hash file
 	await fsp.writeFile(hashFile, specHash);
-})();
+})().catch((err) => {
+	console.error(err);
+	process.exit(1);
+});
