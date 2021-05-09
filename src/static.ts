@@ -200,7 +200,7 @@ export abstract class BaseClient {
 	 * @param convertResponse
 	 *   The function for validating and converting the JSON response.
 	 */
-	async fetch<I, O>(
+	protected async fetch<I, O>(
 		overrideConfig: Partial<ClientConfig>,
 		method: HttpMethod,
 		url: string,
