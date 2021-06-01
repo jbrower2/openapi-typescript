@@ -1,6 +1,6 @@
 {
 	"name": "@jbrower/openapi-typescript",
-	"version": "1.3.2",
+	"version": "1.3.3",
 	"description": "Tool for generating TypeScript APIs/clients from OpenAPI spec files.",
 	"main": "dist/index.js",
 	"bin": "cli.js",
