@@ -334,6 +334,9 @@ import { StringBuilder } from "./string-builder";
 		operations: OperationExtended[]
 	): string => {
 		const imports = new Imports("api");
+		imports.addGlobal("@ti/log", "addRequestId");
+		imports.addGlobal("@ti/log", "Logger");
+		imports.addGlobal("@ti/log", "WrappedLogger");
 		imports.addLocal(undefined, "base-api", "BaseApi");
 		imports.addGlobal("express", "Express");
 		imports.addGlobal("express", "Request");
@@ -492,11 +495,11 @@ import { StringBuilder } from "./string-builder";
 			abstractMethodLines.append("abstract ");
 			abstractMethodLines.append(methodName);
 			abstractMethodLines.append("(");
-			paramsWithTypes.forEach((p, i) => {
-				if (i > 0) abstractMethodLines.append(",");
+			paramsWithTypes.forEach((p) => {
 				abstractMethodLines.append(p);
+				abstractMethodLines.append(",");
 			});
-			abstractMethodLines.append("): Promise<");
+			abstractMethodLines.append("log: Logger): Promise<");
 			abstractMethodLines.append(returnType ? returnType.typeName : "void");
 			abstractMethodLines.append(">;\n\n");
 
@@ -509,17 +512,6 @@ import { StringBuilder } from "./string-builder";
 				}
 			}
 
-			const addResponseValidator = () => {
-				if (returnType) {
-					imports.addValidate("validate");
-					registerLines.append(".then((result) => validate(");
-					registerLines.append(returnType.toJson());
-					registerLines.append(")(result, [");
-					registerLines.append(JSON.stringify(operationId));
-					registerLines.append(', "200", "responseBody"]))');
-				}
-			};
-
 			// TODO authentication
 			registerLines.append("app.");
 			registerLines.append(method.toLowerCase());
@@ -527,21 +519,28 @@ import { StringBuilder } from "./string-builder";
 			registerLines.append(JSON.stringify(urlString.toString()));
 			registerLines.append(", (req: Request, res: Response) => ");
 			registerLines.append("this.handleResponse(res, ");
-			if (paramNames.length) {
-				registerLines.append("(async () => {");
-				registerLines.append(paramLines);
-				registerLines.append("return await this.");
-				registerLines.append(methodName);
-				registerLines.append("(");
-				registerLines.append(paramNames.join());
-				registerLines.append(")");
-				addResponseValidator();
-				registerLines.append(";})())");
-			} else {
-				registerLines.append(`this.${methodName}()`);
-				addResponseValidator();
-				registerLines.append(")");
+			registerLines.append("(() => {");
+			registerLines.append(paramLines);
+			registerLines.append(
+				"const log = new WrappedLogger(baseLog, addRequestId((req as any).id as string));"
+			);
+			registerLines.append("return this.");
+			registerLines.append(methodName);
+			registerLines.append("(");
+			paramNames.forEach((p) => {
+				registerLines.append(p);
+				registerLines.append(",");
+			});
+			registerLines.append("log)");
+			if (returnType) {
+				imports.addValidate("validate");
+				registerLines.append(".then((result) => validate(");
+				registerLines.append(returnType.toJson());
+				registerLines.append(")(result, [");
+				registerLines.append(JSON.stringify(operationId));
+				registerLines.append(', "200", "responseBody"]))');
 			}
+			registerLines.append(";})())");
 			registerLines.append(");");
 
 			if (Object.entries(otherOperationProps).length) {
@@ -564,7 +563,7 @@ import { StringBuilder } from "./string-builder";
 		b.append("Api extends BaseApi {");
 		b.append(abstractMethodLines);
 		b.append(
-			"/** Register all endpoints. */\nregisterEndpoints(app: Express): void {"
+			"/** Register all endpoints. */\nregisterEndpoints(app: Express, baseLog: Logger): void {"
 		);
 		b.append(registerLines);
 		b.append("}}");
@@ -875,6 +874,7 @@ import { StringBuilder } from "./string-builder";
 	switch (mode) {
 		case "api": {
 			const b = new StringBuilder();
+			b.append('import { Logger } from "@ti/log";');
 			b.append('import { Express } from "express";');
 			tagIdentifiers.forEach((tag) => {
 				b.append("import { ");
@@ -891,12 +891,12 @@ import { StringBuilder } from "./string-builder";
 				b.append("Api;");
 			});
 			b.append(
-				"};\n\nexport const registerApis = (apis: Apis, app: Express): void => {"
+				"};\n\nexport const registerApis = (apis: Apis, app: Express, log: Logger): void => {"
 			);
 			tagIdentifiers.forEach((tag) => {
 				b.append("apis.");
 				b.append(tag.lowerCamel);
-				b.append(".registerEndpoints(app);");
+				b.append(".registerEndpoints(app, log);");
 			});
 			b.append("};");
 			await fsp.writeFile(
